@@ -1,0 +1,18 @@
+<Publish>
+  <ModId Value="" />
+  <DisplayName Value="ParkManager" />
+  <ShortDescription Value="Draw a polygon and generate a configurable park from internal game assets." />
+  <LongDescription>
+ParkManager is a procedural park generator for Cities: Skylines II. This is an early development build.
+  </LongDescription>
+  <Thumbnail Value="Properties/Thumbnail.png" />
+  <Tag Value="Code Mod" />
+  <ForumLink Value="" />
+  <ModVersion Value="0.5.0" />
+  <GameVersion Value="1.6.*" />
+  <Dependency Id="74417" />
+  <Dependency Id="79634" />
+  <RequiredDLC Value="" />
+  <ChangeLog>Plan and build a grass surface, trees, bushes, benches, lamps and an optional gated fence from selectable Vanilla assets.</ChangeLog>
+  <AccessLevel Value="Private" />
+</Publish>

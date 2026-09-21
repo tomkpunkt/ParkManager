@@ -1,0 +1,836 @@
+@outline: #f0ad3e;
+@paths: #4fc3f7;
+@assets: #7cd455;
+@danger: #e97868;
+@surface: rgba(12, 20, 35, 0.72);
+@surfaceStrong: rgba(12, 20, 35, 0.92);
+
+.panel {
+  position: absolute;
+  top: 18rem;
+  left: 50%;
+  z-index: 50;
+  width: 1320rem;
+  max-width: 94%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 10rem;
+  color: var(--menuText1Normal);
+  background-color: var(--panelColorNormal);
+  backdrop-filter: var(--panelBlur);
+  font-family: var(--fontFamily);
+  pointer-events: auto;
+}
+
+.rail {
+  display: flex;
+  align-items: center;
+  min-height: 56rem;
+  padding: 7rem 10rem;
+  box-sizing: border-box;
+  border-bottom: 1rem solid var(--menuBorderColor1);
+  background-color: @surface;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  flex: 0 0 180rem;
+  color: var(--menuText1Normal);
+  font-size: var(--fontSizeS);
+  font-weight: bold;
+}
+
+.brandMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30rem;
+  height: 30rem;
+  margin-right: 9rem;
+  border-radius: 6rem;
+  color: #13202a;
+  background-color: @assets;
+  font-size: 19rem;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.progressStep {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34rem;
+  margin-right: 4rem;
+  padding: 0 8rem;
+  box-sizing: border-box;
+  border-bottom: 2rem solid transparent;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  border-radius: 5rem;
+  color: var(--menuText2Normal);
+  background-color: rgba(255, 255, 255, 0.035);
+  font-size: var(--fontSizeXS);
+  font-family: var(--fontFamily);
+  text-align: left;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.progressStep:hover:not([disabled]) {
+  color: var(--menuText1Normal);
+  background-color: var(--menuHoverColor);
+}
+
+.progressStep[disabled] {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.progressStepActive {
+  border-bottom-color: @paths;
+  color: white;
+  background-color: var(--menuActiveColor);
+}
+
+.progressStepDone {
+  color: var(--menuText1Normal);
+}
+
+.progressNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 21rem;
+  width: 21rem;
+  height: 21rem;
+  margin-right: 6rem;
+  border-radius: 11rem;
+  color: #152230;
+  background-color: rgba(255, 255, 255, 0.52);
+  font-size: 11rem;
+  font-weight: bold;
+}
+
+.progressStepActive .progressNumber { background-color: @paths; }
+.progressStepDone .progressNumber { background-color: @assets; }
+
+.toolSlot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 330rem;
+  min-height: 36rem;
+  margin-left: 10rem;
+}
+
+.snapRow {
+  display: flex;
+  align-items: center;
+}
+
+.snapLabel {
+  margin-right: 7rem;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+  font-weight: bold;
+  letter-spacing: 1rem;
+}
+
+.iconButton,
+.closeButton {
+  border: 0;
+  color: var(--menuText2Normal);
+  background-color: transparent;
+  font-family: var(--fontFamily);
+  pointer-events: auto;
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32rem;
+  height: 32rem;
+  margin-right: 3rem;
+  padding: 5rem;
+  border: 1rem solid transparent;
+  border-radius: 5rem;
+  opacity: 0.48;
+}
+
+.iconButton img { width: 21rem; height: 21rem; }
+
+.iconButton:hover,
+.closeButton:hover { background-color: var(--menuHoverColor); }
+
+.iconButtonActive {
+  border-color: @outline;
+  opacity: 1;
+  background-color: var(--menuActiveColor);
+}
+
+.closeButton {
+  flex: 0 0 34rem;
+  width: 34rem;
+  height: 34rem;
+  margin-left: 8rem;
+  border-radius: 5rem;
+  font-size: 25rem;
+  line-height: 30rem;
+}
+
+.content {
+  display: flex;
+  min-height: 330rem;
+  padding: 18rem 22rem;
+  box-sizing: border-box;
+}
+
+.simpleWorkspace {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+
+.stageColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 20rem 40rem 10rem 18rem;
+  box-sizing: border-box;
+}
+
+.workflowFooter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex: 0 0 52rem;
+  min-height: 52rem;
+  padding: 0 24rem 6rem 18rem;
+  box-sizing: border-box;
+}
+
+.footerLeft,
+.footerRight {
+  display: flex;
+  align-items: center;
+  min-height: 36rem;
+}
+
+.footerRight { justify-content: flex-end; }
+.footerRight > button + button { margin-left: 8rem; }
+
+.stageCopy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin-bottom: 7rem;
+  color: @paths;
+  font-size: var(--fontSizeXS);
+  font-weight: bold;
+  letter-spacing: 1rem;
+  text-transform: uppercase;
+}
+
+.stageCopy h2,
+.assetStageHeader h2 {
+  margin: 0 0 8rem;
+  color: var(--menuText1Normal);
+  font-size: var(--fontSizeL);
+  font-weight: bold;
+}
+
+.stageCopy p,
+.assetStageHeader p {
+  max-width: 650rem;
+  margin: 0 0 16rem;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+  line-height: 1.35;
+}
+
+.stateRow {
+  display: flex;
+  align-items: center;
+}
+
+.statePill {
+  display: flex;
+  align-items: center;
+  min-height: 28rem;
+  margin-right: 7rem;
+  padding: 4rem 10rem;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 15rem;
+  color: var(--menuText2Normal);
+  background-color: rgba(255, 255, 255, 0.04);
+  font-size: var(--fontSizeXS);
+}
+
+.statePillSuccess {
+  border-color: rgba(124, 212, 85, 0.48);
+  color: var(--menuText1Normal);
+  background-color: rgba(124, 212, 85, 0.10);
+}
+
+.stateCheck {
+  margin-right: 5rem;
+  color: @assets;
+  font-weight: bold;
+}
+
+.actionPanel,
+.managePanel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 0 0 330rem;
+  padding: 24rem;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 9rem;
+  background-color: rgba(12, 20, 35, 0.35);
+}
+
+.primaryButton,
+.secondaryButton,
+.tertiaryButton,
+.backButton,
+.dangerButton,
+.dangerLink,
+.successButton,
+.fenceToggle {
+  min-height: 36rem;
+  padding: 7rem 12rem;
+  box-sizing: border-box;
+  border-radius: 5rem;
+  font-family: var(--fontFamily);
+  font-size: var(--fontSizeXS);
+  font-weight: bold;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.primaryButton,
+.secondaryButton,
+.tertiaryButton,
+.dangerButton,
+.successButton {
+  width: 100%;
+  margin-top: 8rem;
+}
+
+.backButton {
+  align-self: flex-start;
+  width: 170rem;
+  min-width: 170rem;
+  margin: 0;
+  border: 1rem solid var(--menuBorderColor1);
+  color: var(--menuText1Normal);
+  background-color: var(--menuActiveColor);
+}
+
+.primaryButton {
+  border: 1rem solid rgba(79, 195, 247, 0.75);
+  color: #10202a;
+  background-color: @paths;
+}
+
+.secondaryButton {
+  border: 1rem solid var(--menuBorderColor1);
+  color: var(--menuText1Normal);
+  background-color: var(--menuActiveColor);
+}
+
+.tertiaryButton,
+.dangerLink {
+  border: 0;
+  color: var(--menuText2Normal);
+  background-color: transparent;
+}
+
+.dangerButton {
+  border: 1rem solid rgba(233, 120, 104, 0.65);
+  color: white;
+  background-color: rgba(233, 120, 104, 0.22);
+}
+
+.successButton {
+  border: 1rem solid rgba(124, 212, 85, 0.72);
+  color: #10220f;
+  background-color: @assets;
+}
+
+.workflowFooter .primaryButton,
+.workflowFooter .secondaryButton,
+.workflowFooter .dangerButton,
+.workflowFooter .successButton {
+  width: 170rem;
+  min-width: 170rem;
+  margin: 0;
+}
+
+.workflowFooter .footerRight > button + button {
+  margin-left: 8rem;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.tertiaryButton:hover,
+.backButton:hover,
+.dangerButton:hover,
+.dangerLink:hover,
+.successButton:hover,
+.fenceToggle:hover { filter: brightness(1.14); }
+
+.primaryButton[disabled],
+.secondaryButton[disabled],
+.tertiaryButton[disabled],
+.backButton[disabled],
+.dangerButton[disabled],
+.dangerLink[disabled],
+.successButton[disabled],
+.fenceToggle[disabled],
+.assetTile[disabled],
+.assetChoiceTile[disabled] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.buttonArrow {
+  float: right;
+  margin-left: 10rem;
+  font-size: 18rem;
+  line-height: 14rem;
+}
+
+.manageLabel {
+  margin-bottom: 6rem;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* Asset step: fixed two-column workspace. Opening a category only replaces
+   the right pane, so the whole panel no longer jumps in height. */
+.assetStage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.assetStageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 62rem;
+}
+
+.assetStageHeader > div:first-child {
+  flex: 0 0 510rem;
+  min-width: 0;
+}
+.assetStageHeader p { margin-bottom: 4rem; }
+
+.assetSettings {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 14rem;
+}
+
+.densityControl {
+  display: flex;
+  align-items: center;
+  min-height: 36rem;
+  padding: 5rem 10rem;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 5rem;
+  color: var(--menuText2Normal);
+  background-color: rgba(255, 255, 255, 0.04);
+  font-size: var(--fontSizeXS);
+  font-weight: bold;
+  white-space: nowrap;
+  flex: 1 1 50%;
+}
+
+.densitySlider {
+  position: relative;
+  width: 126rem;
+  height: 24rem;
+  margin: 0 9rem;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  pointer-events: auto;
+}
+
+.densityTrack {
+  position: absolute;
+  top: 10rem;
+  right: 3rem;
+  left: 3rem;
+  display: block;
+  height: 5rem;
+  border-radius: 3rem;
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.densityFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  border-radius: 3rem;
+  background-color: @assets;
+}
+
+.densityThumb {
+  position: absolute;
+  top: -5rem;
+  display: block;
+  width: 15rem;
+  height: 15rem;
+  margin-left: -7rem;
+  border: 2rem solid #10220f;
+  border-radius: 9rem;
+  box-sizing: border-box;
+  background-color: @assets;
+}
+
+.densityControl strong {
+  min-width: 38rem;
+  color: var(--menuText1Normal);
+  text-align: right;
+}
+
+.densitySlider[disabled] { opacity: 0.35; pointer-events: none; }
+
+.fenceToggle {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: 8rem;
+  justify-content: center;
+  flex: 1 1 50%;
+  border: 1rem solid var(--menuBorderColor1);
+  color: var(--menuText2Normal);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.fenceToggleActive {
+  border-color: rgba(124, 212, 85, 0.6);
+  color: var(--menuText1Normal);
+  background-color: rgba(124, 212, 85, 0.10);
+}
+
+.toggleTrack {
+  position: relative;
+  display: block;
+  width: 34rem;
+  height: 18rem;
+  margin-right: 8rem;
+  box-sizing: border-box;
+  border: 1rem solid rgba(255, 255, 255, 0.16);
+  border-radius: 9rem;
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  display: block;
+  width: 14rem;
+  height: 14rem;
+  margin-left: 0;
+  border-radius: 7rem;
+  background-color: var(--menuText2Normal);
+}
+
+.fenceToggleActive .toggleTrack { background-color: rgba(124, 212, 85, 0.38); }
+.fenceToggleActive .toggleKnob { left: 17rem; margin-left: 0; background-color: @assets; }
+
+.assetWorkspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 202rem;
+  margin-top: 8rem;
+}
+
+.assetGrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  flex: 0 0 510rem;
+  margin: -3rem;
+}
+
+.assetTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32%;
+  width: 32%;
+  height: 94rem;
+  margin: 3rem;
+  padding: 22rem 7rem 15rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 6rem;
+  color: var(--menuText1Normal);
+  background-color: rgba(12, 20, 35, 0.54);
+  font-family: var(--fontFamily);
+  pointer-events: auto;
+}
+
+.assetTile:hover { background-color: var(--menuHoverColor); }
+
+.assetTileActive {
+  border-color: @assets;
+  background-color: rgba(124, 212, 85, 0.10);
+}
+
+.assetTileLabel {
+  position: absolute;
+  top: 5rem;
+  left: 7rem;
+  right: 7rem;
+  overflow: hidden;
+  color: var(--menuText1Normal);
+  font-size: var(--fontSizeXS);
+  font-weight: bold;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetTileVisual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 50rem;
+}
+
+.assetIcon { max-width: 54rem; max-height: 48rem; object-fit: contain; }
+
+.assetFallback,
+.assetChoiceFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42rem;
+  height: 42rem;
+  border-radius: 6rem;
+  color: @assets;
+  background-color: rgba(255, 255, 255, 0.08);
+  font-size: 18rem;
+  font-weight: bold;
+}
+
+.assetTileCount {
+  position: absolute;
+  right: 6rem;
+  bottom: 4rem;
+  left: 6rem;
+  overflow: hidden;
+  color: var(--menuText2Normal);
+  font-size: 9rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetChooser {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 14rem;
+  overflow: hidden;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 7rem;
+  background-color: @surfaceStrong;
+}
+
+.assetChooserHeader {
+  display: flex;
+  align-items: center;
+  flex: 0 0 34rem;
+  min-height: 34rem;
+  padding: 5rem 9rem;
+  box-sizing: border-box;
+  border-bottom: 1rem solid var(--menuBorderColor1);
+  background-color: rgba(255, 255, 255, 0.045);
+  font-size: var(--fontSizeXS);
+}
+
+.assetChooserHeader strong { margin-right: 10rem; color: @assets; }
+.assetChooserHeader span { color: var(--menuText2Normal); }
+
+.assetChoiceBody {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.assetChoiceGrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  flex: 1 1 auto;
+  max-height: 168rem;
+  padding: 5rem;
+  overflow-y: auto;
+  box-sizing: border-box;
+  scrollbar-color: @assets rgba(255, 255, 255, 0.08);
+  scrollbar-width: auto;
+}
+
+.assetChoiceGrid::-webkit-scrollbar { width: 10rem; }
+.assetChoiceGrid::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+.assetChoiceGrid::-webkit-scrollbar-thumb {
+  border-radius: 5rem;
+  background-color: @assets;
+}
+
+.assetChoiceTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20%;
+  width: 20%;
+  height: 78rem;
+  padding: 5rem;
+  box-sizing: border-box;
+  border: 2rem solid rgba(255, 255, 255, 0.06);
+  color: var(--menuText1Normal);
+  background-color: rgba(255, 255, 255, 0.025);
+  pointer-events: auto;
+}
+
+.assetChoiceTile:hover { background-color: var(--menuHoverColor); }
+
+.assetChoiceTileActive {
+  border-color: @assets;
+  background-color: rgba(124, 212, 85, 0.12);
+}
+
+.assetChoiceIcon { max-width: 48rem; max-height: 48rem; object-fit: contain; }
+
+.assetChoiceName {
+  display: block;
+  width: 100%;
+  margin-top: 2rem;
+  overflow: hidden;
+  color: var(--menuText2Normal);
+  font-size: 8rem;
+  line-height: 11rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetScrollControls {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 32rem;
+  border-left: 1rem solid var(--menuBorderColor1);
+}
+
+.assetScrollControls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 50%;
+  min-height: 48rem;
+  border: 0;
+  color: var(--menuText1Normal);
+  background-color: rgba(255, 255, 255, 0.04);
+  font-family: var(--fontFamily);
+  font-size: 13rem;
+  pointer-events: auto;
+}
+
+.assetScrollControls button + button {
+  border-top: 1rem solid var(--menuBorderColor1);
+}
+
+.assetScrollControls button:hover { background-color: var(--menuHoverColor); }
+
+.assetChoiceCheck {
+  position: absolute;
+  right: 3rem;
+  bottom: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 4rem;
+  color: #10220f;
+  background-color: @assets;
+  font-size: 13rem;
+  font-weight: bold;
+}
+
+.assetChooserEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+}
+
+.assetFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48rem;
+  margin-top: 10rem;
+  padding-top: 9rem;
+  border-top: 1rem solid var(--menuBorderColor1);
+}
+
+.assetFooter .dangerButton { width: 170rem; min-width: 170rem; margin: 0; }
+
+.footerActions { display: flex; align-items: center; }
+.footerActions .primaryButton,
+.footerActions .secondaryButton { width: auto; min-width: 170rem; margin: 0 0 0 8rem; }
+
+@media (max-width: 1180px) {
+  .toolSlot { flex-basis: 250rem; }
+  .progressStep { padding-left: 5rem; padding-right: 5rem; }
+  .progressNumber { margin-right: 3rem; }
+  .assetGrid { flex-basis: 450rem; }
+  .assetStageHeader > div:first-child { flex-basis: 450rem; }
+}

@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Configurations>Debug;Release</Configurations>
+    <TargetFramework>net48</TargetFramework>
+    <Version>0.5.0</Version>
+    <CS2ToolPath Condition="'$(CSII_TOOLPATH)' != ''">$(CSII_TOOLPATH)</CS2ToolPath>
+    <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>
+    <PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
+  </PropertyGroup>
+
+  <Import Project="$(CS2ToolPath)\Mod.props" />
+
+  <ItemGroup>
+    <Reference Include="Game"><Private>false</Private></Reference>
+    <Reference Include="Colossal.Core"><Private>false</Private></Reference>
+    <Reference Include="Colossal.Collections"><Private>false</Private></Reference>
+    <Reference Include="Colossal.Logging"><Private>false</Private></Reference>
+    <Reference Include="Colossal.Localization"><Private>false</Private></Reference>
+    <Reference Include="Colossal.Mathematics"><Private>false</Private></Reference>
+    <Reference Include="Colossal.UI.Binding"><Private>false</Private></Reference>
+    <Reference Include="Unity.Collections"><Private>false</Private></Reference>
+    <Reference Include="Unity.Entities"><Private>false</Private></Reference>
+    <Reference Include="Unity.Mathematics"><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><Private>false</Private></Reference>
+    <Reference Include="Unity.InputSystem"><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="UI\**\*.cs" />
+    <Compile Remove="repos\**\*.cs" />
+    <None Remove="UI\node_modules\**" />
+    <None Remove="repos\**" />
+  </ItemGroup>
+
+  <Import Project="$(CS2ToolPath)\Mod.targets" />
+
+  <!-- Build the bundle before the SDK gathers output files. DeployWIP runs
+       directly after AfterBuild, so an AfterTargets=Build UI target would
+       always deploy the previous bundle. -->
+  <Target Name="BuildUserInterface" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <UiDirectory>$(MSBuildProjectDirectory)\UI</UiDirectory>
+    </PropertyGroup>
+    <Message Importance="high" Condition="!Exists('$(UiDirectory)\node_modules')"
+      Text="UI skipped: run npm install in $(UiDirectory)." />
+    <Exec Condition="Exists('$(UiDirectory)\node_modules')"
+      WorkingDirectory="$(UiDirectory)" Command="npm run build" />
+  </Target>
+
+  <Target Name="DeployUserInterface" AfterTargets="DeployWIP"
+    Condition="Exists('$(MSBuildProjectDirectory)\UI\build')">
+    <ItemGroup>
+      <ParkManagerUiFiles Include="$(MSBuildProjectDirectory)\UI\build\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ParkManagerUiFiles)"
+      DestinationFiles="@(ParkManagerUiFiles->'$(DeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

@@ -1,0 +1,10 @@
+bin/
+obj/
+Library/
+repos/
+papers/
+UI/node_modules/
+UI/build/
+.vs/
+*.user
+*.suo

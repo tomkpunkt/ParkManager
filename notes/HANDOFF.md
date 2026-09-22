@@ -437,9 +437,24 @@ einen unabhängigen Entwurf. Die Parkfläche dient als Gruppen-Bulldozer-Anker f
 gesamten Record. Save/Load, das Anlegen mindestens zweier Parks und der
 vollständige Bulldozer-Abriss müssen im Spiel abgenommen werden.
 
-Danach folgt **M0.5c** (atomarer Rollback, Migration und Erhalt manueller
-Einzeländerungen). Erst nach diesem
+Der Wegebau-Teil von **M0.5c** ist umgesetzt: Vor `Apply` wird eine Baseline der
+permanenten Weg-Entities aufgenommen; danach werden neue Kanten, zusammengeführte
+Knoten und Fallbackflächen erneut entdeckt und markiert. Die Kantenanzahl ist das
+Abnahmekriterium, nicht mehr die instabile Gesamtzahl temporärer Entities. Ein
+Timeout erfasst alle entdeckten Reste für den Rollback und schreibt getrennte
+Ist-/Sollzähler ins Log. Offen bleiben Ausstattungs-Rollback, Migration und der
+Erhalt manueller Einzeländerungen. Erst nach diesem
 Lebenszyklusnachweis folgen M0.6 und zusätzliche Ausstattungsgruppen.
+
+Die im Anarchy-Test sichtbaren großen Kreise waren reale Node-/Dead-end-Meshes,
+nicht das ParkManager-Overlay. Die Prefabwahl ist nun deterministisch und nutzt
+weiterhin den etablierten breiten Parkweg `PedestrianPathWide01`; der ähnlich
+benannte schmale Vanilla-Pfad ist im aktuellen Assetsatz ein Radweg. Vor
+Vorschau und Bau entfernt der Geometriekern bei
+Mehrtor-Parks innere Sackgassen und fasst nahezu kollineare Grad-2-Knoten
+zusammen. Echte Tore, Kurven und Kreuzungen bleiben als editierbare Netzknoten
+erhalten; deren Vanilla-Knotenform ist beabsichtigt und im Spiel noch mit
+aktivem sowie inaktivem Anarchy zu vergleichen.
 
 Der vollständige, priorisierte Community-Backlog steht in der Spezifikation im
 Abschnitt „Community- und Produkt-Backlog“. Darin festgelegt ist auch die kleine

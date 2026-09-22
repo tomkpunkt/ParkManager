@@ -84,7 +84,9 @@ and furnishing stays independently editable and deletable. Bulldozing the park
 surface deliberately removes its path and fence edges before Vanilla's network reference
 pass, then removes objects and areas in bounded batches and finally deletes the
 logical record. Final in-game bulldoze and save/load verification remain within
-M0.5.
+M0.5. Path materialization is validated by rediscovering the permanent edges
+created after each build snapshot; CS2 may merge junction nodes without causing
+a false build failure, and an actual timeout removes every discovered remainder.
 
 Version 0.4 adds a deterministic furnishing pass. Trees and bushes are shown as
 differently sized green preview points, benches as brown rectangles, lamps as

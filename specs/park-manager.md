@@ -1089,9 +1089,20 @@ Die Ausführung erfolgt in dieser Reihenfolge:
    `ReferencesSystem`, übrige Mitglieder portionsweise in `Modification3`
    gelöscht. Danach werden überlebende Netzknoten abgekoppelt und der Record
    entfernt.
-7. **M0.5c:** fehlgeschlagene Wege- und Ausstattungsbauten als Transaktion
-   rückstandsfrei zurückrollen, Save/Load/Migration testen und externe
-   Einzeländerungen erhalten. Erst danach M0.6 und weitere Module beginnen.
+7. **M0.5c – Wegebau-Teil implementiert, Ingame-Abnahme offen:** Der Wegebau
+   merkt sich vor jeder Materialisierung alle vorhandenen Entities des gewählten
+   Prefabs und entdeckt nach `Apply` die tatsächlich neu entstandenen permanenten
+   Kanten, Knoten und Ersatzflächen erneut. Nur die Kantenanzahl ist invariant;
+   von CS2 zusammengeführte Kreuzungsknoten lösen keinen Fehlalarm mehr aus. Ein
+   echter Timeout markiert alle neu entdeckten Reste zur Löschung und protokolliert
+   getrennte Ist-/Sollzahlen. Ausstattungs-Rollback, Save/Load/Migration und der
+   Erhalt externer Einzeländerungen bleiben offen. Erst danach M0.6 und weitere
+   Module beginnen. Die sichtbare Netzgeometrie wählt nun deterministisch den
+   etablierten breiten Parkweg `PedestrianPathWide01`; der schmale Namensvetter
+   ist im aktuellen Vanilla-Assetsatz ein Radweg. Vor der Ausgabe werden innere
+   Sackgassen eines Mehrtor-Netzes entfernt und
+   nahezu kollineare Grad-2-Punkte zusammengezogen, damit redundante runde
+   Node-Meshes nicht als vermeintliche Wegpunkte sichtbar bleiben.
 
 ### M1 – Headless-Domäne und Polygonkern
 

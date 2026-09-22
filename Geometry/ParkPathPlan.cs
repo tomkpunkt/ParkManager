@@ -77,7 +77,6 @@ namespace ParkManager.Geometry
             var nodes = new List<ParkPathNode>();
             var edges = new List<ParkPathEdge>();
             var edgeKeys = new HashSet<long>();
-            var totalLength = 0f;
             for (var i = 0; i + 1 < segments.Count; i += 2)
             {
                 var a = FindOrAddNode(nodes, segments[i], gates);
@@ -97,11 +96,160 @@ namespace ParkManager.Geometry
                     Kind = ParkPathEdgeKind.Secondary,
                     Width = 3f,
                 });
-                totalLength += length;
             }
 
+            SimplifyNetworkGraph(nodes, edges);
+            var totalLength = 0f;
+            for (var i = 0; i < edges.Count; i++)
+            {
+                edges[i].Id = i;
+                totalLength += math.distance(nodes[edges[i].A].Position,
+                    nodes[edges[i].B].Position);
+            }
             ClassifyEdges(nodes, edges);
             return new ParkPathPlan(seed, nodes, edges, totalLength);
+        }
+
+        /// <summary>
+        /// Removes topology that has no useful visible counterpart in CS2.
+        /// Every exported edge becomes a separate NetCourse, therefore even a
+        /// mathematically redundant degree-two vertex produces a round network
+        /// node. Multi-gate layouts also have no use for non-gate dead branches.
+        /// Genuine gates, bends and junctions remain untouched.
+        /// </summary>
+        private static void SimplifyNetworkGraph(List<ParkPathNode> nodes,
+            List<ParkPathEdge> edges)
+        {
+            if (nodes.Count == 0 || edges.Count == 0) return;
+
+            var gateCount = 0;
+            for (var i = 0; i < nodes.Count; i++)
+                if (nodes[i].Kind == ParkPathNodeKind.Gate) gateCount++;
+
+            // With two or more entrances the useful graph connects terminals
+            // or forms loops. A non-gate leaf is only a visual stub ending in a
+            // circular cap. For a single entrance one interior leaf is needed.
+            if (gateCount > 1)
+            {
+                var changed = true;
+                while (changed)
+                {
+                    changed = false;
+                    var degree = BuildDegree(nodes.Count, edges);
+                    for (var node = 0; node < nodes.Count; node++)
+                    {
+                        if (degree[node] != 1
+                            || nodes[node].Kind == ParkPathNodeKind.Gate) continue;
+                        for (var edge = edges.Count - 1; edge >= 0; edge--)
+                        {
+                            if (edges[edge].A != node && edges[edge].B != node) continue;
+                            edges.RemoveAt(edge);
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Collapse only virtually straight vertices. The tight geometric
+            // tolerance prevents a shortcut from visibly changing the plan or
+            // leaving the polygon, while eliminating nodes on straight runs.
+            var collapsed = true;
+            while (collapsed)
+            {
+                collapsed = false;
+                var incident = BuildAdjacency(nodes.Count, edges);
+                for (var node = 0; node < nodes.Count; node++)
+                {
+                    if (nodes[node].Kind == ParkPathNodeKind.Gate
+                        || incident[node].Count != 2) continue;
+                    var firstIndex = incident[node][0];
+                    var secondIndex = incident[node][1];
+                    var first = edges[firstIndex];
+                    var second = edges[secondIndex];
+                    var a = first.A == node ? first.B : first.A;
+                    var b = second.A == node ? second.B : second.A;
+                    if (a == b || HasEdge(edges, a, b)) continue;
+
+                    var center = nodes[node].Position;
+                    var da = math.normalizesafe(nodes[a].Position - center);
+                    var db = math.normalizesafe(nodes[b].Position - center);
+                    if (math.dot(da, db) > -0.985f
+                        || DistanceToSegmentSquared(center,
+                            nodes[a].Position, nodes[b].Position) > 0.5625f)
+                        continue;
+
+                    var high = Math.Max(firstIndex, secondIndex);
+                    var low = Math.Min(firstIndex, secondIndex);
+                    edges.RemoveAt(high);
+                    edges.RemoveAt(low);
+                    edges.Add(new ParkPathEdge
+                    {
+                        A = a,
+                        B = b,
+                        Kind = ParkPathEdgeKind.Secondary,
+                        Width = 3f,
+                    });
+                    collapsed = true;
+                    break;
+                }
+            }
+
+            CompactGraph(nodes, edges);
+        }
+
+        private static int[] BuildDegree(int nodeCount,
+            IReadOnlyList<ParkPathEdge> edges)
+        {
+            var degree = new int[nodeCount];
+            for (var i = 0; i < edges.Count; i++)
+            {
+                degree[edges[i].A]++;
+                degree[edges[i].B]++;
+            }
+            return degree;
+        }
+
+        private static bool HasEdge(IReadOnlyList<ParkPathEdge> edges, int a, int b)
+        {
+            for (var i = 0; i < edges.Count; i++)
+                if (edges[i].A == a && edges[i].B == b
+                    || edges[i].A == b && edges[i].B == a) return true;
+            return false;
+        }
+
+        private static void CompactGraph(List<ParkPathNode> nodes,
+            List<ParkPathEdge> edges)
+        {
+            var used = new bool[nodes.Count];
+            for (var i = 0; i < edges.Count; i++)
+            {
+                used[edges[i].A] = true;
+                used[edges[i].B] = true;
+            }
+
+            var mapping = new int[nodes.Count];
+            var compact = new List<ParkPathNode>();
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                mapping[i] = -1;
+                if (!used[i]) continue;
+                mapping[i] = compact.Count;
+                compact.Add(new ParkPathNode
+                {
+                    Id = compact.Count,
+                    Position = nodes[i].Position,
+                    Kind = nodes[i].Kind,
+                });
+            }
+
+            for (var i = 0; i < edges.Count; i++)
+            {
+                edges[i].A = mapping[edges[i].A];
+                edges[i].B = mapping[edges[i].B];
+            }
+            nodes.Clear();
+            nodes.AddRange(compact);
         }
 
         internal double NaturalnessScore(IReadOnlyList<float2> polygon)

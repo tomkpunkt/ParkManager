@@ -2,6 +2,20 @@
 
 ## 0.5.0 – development
 
+- Select the established broad Vanilla park pavement
+  `PedestrianPathWide01` deterministically. The similarly named narrow asset is
+  a cycle path in the current asset set and is no longer chosen as a substitute.
+- Normalize the procedural path graph before preview and construction: prune
+  non-gate dead branches in multi-entrance parks and merge geometrically
+  redundant, nearly collinear degree-two vertices, reducing unnecessary round
+  node meshes. Real entrances, bends and junctions remain independent editable
+  Vanilla nodes.
+- Rediscover built path entities after `ApplyMode.Apply` from a per-build
+  permanent-entity baseline. Validation now treats edges as the invariant unit
+  while allowing CS2 to merge junction nodes, eliminating intermittent false
+  aborts that left isolated path points. Failed builds also capture and delete
+  every newly materialized edge, node and fallback surface and log separate
+  expected/actual counts.
 - Add the first multi-park lifecycle slice. Finishing a park now preserves its
   complete editable Vanilla entity group and receipt, detaches it from the
   workspace and starts an independent empty draft for the next park.

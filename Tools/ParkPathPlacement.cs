@@ -35,6 +35,8 @@ namespace ParkManager.Tools
         private EntityQuery _surfacePrefabQuery;
         private EntityQuery _tempPathQuery;
         private EntityQuery _tempAreaQuery;
+        private EntityQuery _permanentPathQuery;
+        private EntityQuery _permanentAreaQuery;
         private EntityQuery _pathMemberQuery;
         private EntityQuery _parkBuildQuery;
         private EntityQuery _legacyBuildQuery;
@@ -52,8 +54,11 @@ namespace ParkManager.Tools
         private int _pathApplyFrame;
         private int _expectedPathCourses;
         private int _expectedPathAreas;
-        private int _pendingMemberCount;
         private int _lastModificationCheckFrame;
+        private readonly HashSet<Entity> _pathEntityBaseline =
+            new HashSet<Entity>();
+        private readonly HashSet<Entity> _areaEntityBaseline =
+            new HashSet<Entity>();
 
         private bool PathBuildBusy => _pathBuildPhase != PathBuildPhase.Idle;
         private bool HasBuiltPaths => _lastBuildRecord != Entity.Null
@@ -104,6 +109,33 @@ namespace ParkManager.Tools
                 {
                     ComponentType.ReadOnly<Deleted>(),
                     ComponentType.ReadOnly<Owner>(),
+                },
+            });
+            _permanentPathQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<PrefabRef>() },
+                Any = new[]
+                {
+                    ComponentType.ReadOnly<Game.Net.Edge>(),
+                    ComponentType.ReadOnly<Game.Net.Node>(),
+                },
+                None = new[]
+                {
+                    ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Temp>(),
+                },
+            });
+            _permanentAreaQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[]
+                {
+                    ComponentType.ReadOnly<Game.Areas.Area>(),
+                    ComponentType.ReadOnly<PrefabRef>(),
+                },
+                None = new[]
+                {
+                    ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Temp>(),
                 },
             });
             _pathMemberQuery = GetEntityQuery(new EntityQueryDesc
@@ -173,6 +205,7 @@ namespace ParkManager.Tools
                 // A failed build must leave this draft active instead of
                 // silently selecting one of the already completed parks.
                 _freshDraftActive = true;
+                CaptureMaterializationBaseline();
                 _pendingBuildRecord = CreatePathBuildRecord(_pathPlan.Seed);
                 var heightData = _terrainSystem.GetHeightData(waitForPending: true);
                 var heights = new Dictionary<int, float>();
@@ -282,9 +315,11 @@ namespace ParkManager.Tools
                             || attachedAreas < _expectedPathAreas) return true;
 
                         applyMode = ApplyMode.Apply;
-                        _pendingMemberCount = attachedPaths + attachedAreas;
                         _pathApplyFrame = UnityEngine.Time.frameCount;
                         _pathBuildPhase = PathBuildPhase.ApplyRequested;
+                        Mod.Log.Info($"ParkManager tagged {attachedPaths} temporary path "
+                            + $"entities and {attachedAreas} temporary areas before Apply; "
+                            + "the permanent graph will be rediscovered afterwards.");
                         PublishPathBuildState("Vanilla-Wege werden als frei editierbare Elemente übernommen …");
                         return true;
                     }
@@ -296,14 +331,24 @@ namespace ParkManager.Tools
                     applyMode = ApplyMode.None;
                     if (UnityEngine.Time.frameCount - _pathApplyFrame
                         < GeometrySettleFrames) return true;
-                    var permanentMembers = CountMembers(_pendingBuildRecord);
-                    if (permanentMembers < _pendingMemberCount)
+                    TagMaterializedPathEntities(_pendingBuildRecord,
+                        out var permanentEdges, out var permanentNodes,
+                        out var permanentAreas);
+                    if (permanentEdges < _expectedPathCourses
+                        || permanentAreas < _expectedPathAreas)
                     {
                         if (UnityEngine.Time.frameCount - _pathApplyFrame
                             <= MaterializationTimeoutFrames) return true;
-                        AbortPathBuild("Die editierbaren Wegteile konnten nicht dauerhaft markiert werden.");
+                        AbortPathBuild("Das materialisierte Wegenetz blieb "
+                            + $"unvollständig: {permanentEdges}/{_expectedPathCourses} "
+                            + $"Kanten, {permanentNodes} Knoten und "
+                            + $"{permanentAreas}/{_expectedPathAreas} Flächen.");
                         return true;
                     }
+                    Mod.Log.Info($"ParkManager rediscovered the permanent path graph: "
+                        + $"{permanentEdges}/{_expectedPathCourses} edges, "
+                        + $"{permanentNodes} merged nodes and "
+                        + $"{permanentAreas}/{_expectedPathAreas} surfaces.");
                     FinalizeEditablePathBuild();
                     return true;
                 case PathBuildPhase.ClearRequested:
@@ -365,6 +410,7 @@ namespace ParkManager.Tools
             selectedName = string.Empty;
             var best = Entity.Null;
             var bestScore = 0;
+            var bestWidth = float.MaxValue;
             using var prefabs = _pathPrefabQuery.ToEntityArray(Allocator.TempJob);
             for (var i = 0; i < prefabs.Length; i++)
             {
@@ -374,6 +420,12 @@ namespace ParkManager.Tools
                 var name = prefab.name ?? string.Empty;
                 var lower = name.ToLowerInvariant();
                 var score = 0;
+                // In the current Vanilla asset set PedestrianPathWide01 is the
+                // broad paved park path used by the established builder. The
+                // similarly named narrow variant renders as a cycle path, so
+                // names alone are not interchangeable here.
+                if (string.Equals(name, "PedestrianPathWide01",
+                        StringComparison.OrdinalIgnoreCase)) score += 2000;
                 if (string.Equals(name, "Pedestrian Path",
                         StringComparison.OrdinalIgnoreCase)) score += 1000;
                 if (string.Equals(name, "Pedestrian Pathway",
@@ -385,8 +437,30 @@ namespace ParkManager.Tools
                     || lower.Contains("covered") || lower.Contains("cable")
                     || lower.Contains("arc") || lower.Contains("subway")
                     || lower.Contains("harbor")) score -= 500;
-                if (score <= bestScore) continue;
+
+                var width = float.MaxValue;
+                if (EntityManager.HasComponent<NetGeometryData>(entity))
+                {
+                    width = EntityManager.GetComponentData<NetGeometryData>(entity)
+                        .m_DefaultWidth;
+                    if (math.isfinite(width) && width > 0.5f)
+                    {
+                        // Prefer the established broad park pavement as the
+                        // geometric fallback when internal names change.
+                        score += 300 - (int)math.round(math.abs(width - 8f) * 30f);
+                        if (width < 5f) score -= 250;
+                    }
+                }
+
+                var betterTie = score == bestScore
+                    && (math.abs(width - 8f) < math.abs(bestWidth - 8f) - 0.01f
+                        || math.abs(math.abs(width - 8f)
+                            - math.abs(bestWidth - 8f)) <= 0.01f
+                        && string.Compare(name, selectedName,
+                            StringComparison.OrdinalIgnoreCase) < 0);
+                if (score < bestScore || score == bestScore && !betterTie) continue;
                 bestScore = score;
+                bestWidth = width;
                 best = entity;
                 selectedName = name;
             }
@@ -596,6 +670,133 @@ namespace ParkManager.Tools
             return count;
         }
 
+        /// <summary>
+        /// Remembers every permanent entity that already used the selected
+        /// path/surface prefab before this build. CS2 may merge temporary nodes
+        /// while applying a network, so entity counts and component transfer
+        /// are not a stable identity mechanism. Anything appearing after this
+        /// snapshot is a materialized result of the active build.
+        /// </summary>
+        private void CaptureMaterializationBaseline()
+        {
+            _pathEntityBaseline.Clear();
+            _areaEntityBaseline.Clear();
+            CapturePrefabBaseline(_permanentPathQuery, _pedestrianPathPrefab,
+                _pathEntityBaseline);
+            if (_usesSurfaceFallback)
+                CapturePrefabBaseline(_permanentAreaQuery, _pavementSurfacePrefab,
+                    _areaEntityBaseline);
+        }
+
+        private void CapturePrefabBaseline(EntityQuery query, Entity prefab,
+            HashSet<Entity> baseline)
+        {
+            if (prefab == Entity.Null) return;
+            using var entities = query.ToEntityArray(Allocator.TempJob);
+            for (var i = 0; i < entities.Length; i++)
+            {
+                var entity = entities[i];
+                if (EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab
+                    == prefab) baseline.Add(entity);
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds logical membership from the permanent graph after Apply.
+        /// Edges are the invariant unit: one planned NetCourse must result in
+        /// one permanent edge. Nodes are deliberately allowed to merge at
+        /// junctions and therefore are only counted, never compared with the
+        /// temporary node count.
+        /// </summary>
+        private void TagMaterializedPathEntities(Entity park, out int edgeCount,
+            out int nodeCount, out int areaCount)
+        {
+            edgeCount = 0;
+            nodeCount = 0;
+            areaCount = 0;
+            if (park == Entity.Null || !EntityManager.Exists(park)) return;
+
+            var nextElementId = NextMemberElementId(park);
+            using (var entities = _permanentPathQuery
+                       .ToEntityArray(Allocator.TempJob))
+            {
+                for (var i = 0; i < entities.Length; i++)
+                {
+                    var entity = entities[i];
+                    if (EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab
+                        != _pedestrianPathPrefab) continue;
+                    var kind = EntityManager.HasComponent<Game.Net.Edge>(entity)
+                        ? ParkPathMemberKind.Edge
+                        : ParkPathMemberKind.Node;
+                    if (!IsMaterializedBuildEntity(entity, park,
+                            _pathEntityBaseline)) continue;
+                    if (!SetMaterializedMember(entity, park, kind,
+                            ref nextElementId)) continue;
+                    if (kind == ParkPathMemberKind.Edge) edgeCount++;
+                    else nodeCount++;
+                }
+            }
+
+            if (!_usesSurfaceFallback) return;
+            using var areas = _permanentAreaQuery.ToEntityArray(Allocator.TempJob);
+            for (var i = 0; i < areas.Length; i++)
+            {
+                var entity = areas[i];
+                if (EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab
+                    != _pavementSurfacePrefab
+                    || !IsMaterializedBuildEntity(entity, park,
+                        _areaEntityBaseline)) continue;
+                if (SetMaterializedMember(entity, park, ParkPathMemberKind.Surface,
+                        ref nextElementId)) areaCount++;
+            }
+        }
+
+        private bool IsMaterializedBuildEntity(Entity entity, Entity park,
+            HashSet<Entity> baseline)
+        {
+            if (!baseline.Contains(entity)) return true;
+            return EntityManager.HasComponent<ParkPathMember>(entity)
+                && EntityManager.GetComponentData<ParkPathMember>(entity).Park
+                == park;
+        }
+
+        private bool SetMaterializedMember(Entity entity, Entity park,
+            ParkPathMemberKind kind, ref int nextElementId)
+        {
+            if (EntityManager.HasComponent<ParkPathMember>(entity))
+            {
+                var existing = EntityManager.GetComponentData<ParkPathMember>(entity);
+                if (existing.Park != park) return false;
+                if (existing.Kind != kind)
+                {
+                    existing.Kind = kind;
+                    EntityManager.SetComponentData(entity, existing);
+                }
+                return true;
+            }
+            EntityManager.AddComponentData(entity, new ParkPathMember
+            {
+                Park = park,
+                ElementId = nextElementId++,
+                Kind = kind,
+            });
+            return true;
+        }
+
+        private int NextMemberElementId(Entity park)
+        {
+            var next = 1;
+            using var entities = _pathMemberQuery.ToEntityArray(Allocator.TempJob);
+            for (var i = 0; i < entities.Length; i++)
+            {
+                var member = EntityManager.GetComponentData<ParkPathMember>(
+                    entities[i]);
+                if (member.Park == park && member.ElementId >= next)
+                    next = member.ElementId + 1;
+            }
+            return next;
+        }
+
         private void FinalizeEditablePathBuild()
         {
             EnsureMembersAreTopLevel(_pendingBuildRecord);
@@ -612,7 +813,8 @@ namespace ParkManager.Tools
 
             _lastBuildRecord = _pendingBuildRecord;
             _pendingBuildRecord = Entity.Null;
-            _pendingMemberCount = 0;
+            _pathEntityBaseline.Clear();
+            _areaEntityBaseline.Clear();
             _lastBuildIsLegacy = false;
             _freshDraftActive = false;
             _pathBuildPhase = PathBuildPhase.Idle;
@@ -669,6 +871,9 @@ namespace ParkManager.Tools
         private void AbortPathBuild(string reason)
         {
             Mod.Log.Warn("ParkManager path build aborted: " + reason);
+            TagMaterializedPathEntities(_pendingBuildRecord,
+                out var materializedEdges, out var materializedNodes,
+                out var materializedAreas);
             DeleteEditableMembers(_pendingBuildRecord);
             if (_pendingBuildRecord != Entity.Null
                 && EntityManager.Exists(_pendingBuildRecord)
@@ -676,13 +881,17 @@ namespace ParkManager.Tools
                 EntityManager.AddComponent<Deleted>(_pendingBuildRecord);
             _pendingBuildRecord = Entity.Null;
             _freshDraftActive = true;
-            _pendingMemberCount = 0;
+            _pathEntityBaseline.Clear();
+            _areaEntityBaseline.Clear();
             applyMode = ApplyMode.Clear;
             _pathApplyFrame = UnityEngine.Time.frameCount;
             _pathBuildPhase = PathBuildPhase.ClearRequested;
             PublishState(reason);
             PublishPathBuildState("Wegebau wird verworfen …");
             PublishWorkspaceState();
+            Mod.Log.Info($"ParkManager abort cleanup captured "
+                + $"{materializedEdges} permanent edges, {materializedNodes} "
+                + $"permanent nodes and {materializedAreas} permanent surfaces.");
         }
 
         private void PublishPathBuildState(string summary)

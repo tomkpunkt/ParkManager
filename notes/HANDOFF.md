@@ -1,8 +1,31 @@
 # ParkManager – Übergabe an einen neuen Chat
 
-Stand: 20. September 2026  
+Stand: 22. September 2026
 Arbeitsordner: `C:\Users\micro\Documents\ParkManager`  
 Ziel: Cities: Skylines II Code-Mod für prozedural erzeugte Parks
+
+Aktuelle Fehlerdiagnose: Jeder neue Wegebau schreibt unter dem stabilen Präfix
+`ParkManager PATH-DIAG` getrennte Snapshots für Plan, temporäre Tool-Entities
+und das permanente Vanilla-Netz. Bei erneut sichtbaren Punktsegmenten muss der
+betroffene Lauf vollständig aus `Player.log` gelesen werden; er enthält je
+Kante Länge, Endknoten, Geometrie-/Composition-Komponenten und Flags sowie je
+Knoten Gesamt- und ParkManager-Grad.
+
+Die Diagnose vom 22. September zeigte vollständig materialisierte Kanten ohne
+`Hidden`/`Overridden`; die sichtbaren Kreise waren die acht Meter breiten
+`Node, Pavement`-Meshes an Grad-2-Zwischenpunkten. Der Builder verdichtet diese
+Polyline-Ketten deshalb vor dem `NetCourse`-Bau zu kubischen Bézier-Kanten.
+Eingänge und echte Verzweigungen bleiben Knoten; bei mehr als 1,5 m
+Kurvenabweichung oder Grenzverletzung wird rekursiv geteilt. `PATH-DIAG COURSES`
+protokolliert die Reduktion von Plansegmenten auf tatsächlich gebaute Kurse.
+
+Ein zweiter reproduzierter Fall betraf Kreise nach „Park löschen → auf derselben
+Fläche neu bauen“. Die alte Bündelbereinigung löschte Kanten, entfernte danach
+aber nur den `ParkPathMember` von überlebenden Netzknoten. Der Neubau nahm diese
+Baseline-Knoten nicht wieder in sein Bündel auf. Die Bereinigung löscht nun
+ungeteilte interne Knoten, bewahrt nur Knoten mit tatsächlich fremden Kanten,
+entfernt alte unverbundene `PedestrianPathWide01`-Reste und adoptiert einen von
+CS2 wiederverwendeten Restknoten zweistufig über seine neuen Parkkanten.
 
 ## 1. Auftrag und Produktidee
 
@@ -442,9 +465,22 @@ permanenten Weg-Entities aufgenommen; danach werden neue Kanten, zusammengeführ
 Knoten und Fallbackflächen erneut entdeckt und markiert. Die Kantenanzahl ist das
 Abnahmekriterium, nicht mehr die instabile Gesamtzahl temporärer Entities. Ein
 Timeout erfasst alle entdeckten Reste für den Rollback und schreibt getrennte
-Ist-/Sollzähler ins Log. Offen bleiben Ausstattungs-Rollback, Migration und der
-Erhalt manueller Einzeländerungen. Erst nach diesem
+Ist-/Sollzähler ins Log. Der anschließende Stabilisierungsdurchgang deckt auch
+die Ausstattung ab; offen bleiben Migration und der Erhalt manueller
+Einzeländerungen. Erst nach diesem
 Lebenszyklusnachweis folgen M0.6 und zusätzliche Ausstattungsgruppen.
+
+Der erste 0.5-Stabilisierungsdurchgang überträgt dieses Verfahren auf die
+Ausstattung: Für jedes tatsächlich verwendete Objekt-, Flächen- und
+Netzzaun-Prefab wird vor dem Bau eine permanente Baseline aufgenommen. Nach
+`Apply` werden Objekte über Prefab und Sollposition, die Parkfläche über ihr
+Prefab sowie Zaunkanten/-knoten aus dem permanenten Graphen erneut markiert.
+Zaunkanten sind invariant, zusammengeführte Zaunknoten nicht. Ein Timeout nimmt
+alle gefundenen Reste vor dem Rollback in den Parkrecord auf. Außerdem lehnen
+Backend und UI Umriss-, Tor-, Wege-, Zaun-, Dichte- und Assetänderungen ab,
+solange der betroffene Bau noch existiert. Offen bleiben Ingame-Abnahme,
+Receipt-Migration und die Zusammenführung der UI-/Backend-Schrittlogik zu einer
+einzigen autoritativen Workflow-State-Machine.
 
 Die im Anarchy-Test sichtbaren großen Kreise waren reale Node-/Dead-end-Meshes,
 nicht das ParkManager-Overlay. Die Prefabwahl ist nun deterministisch und nutzt

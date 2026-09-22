@@ -164,7 +164,8 @@ namespace ParkManager.Tools
 
         private void HandleLeftClick()
         {
-            if (!_hasHover) return;
+            if (!_hasHover || HasBuiltPaths || PathBuildBusy
+                || DecorationBuildBusy) return;
             InvalidatePlannerData();
             if (_closed)
             {
@@ -254,7 +255,8 @@ namespace ParkManager.Tools
 
         private void HandleRightClick()
         {
-            if (_points.Count == 0) return;
+            if (_points.Count == 0 || HasBuiltPaths || PathBuildBusy
+                || DecorationBuildBusy) return;
             PushUndo();
             InvalidatePlannerData();
             if (_hoverPoint >= 0)
@@ -282,6 +284,12 @@ namespace ParkManager.Tools
 
         internal void ClearPolygon()
         {
+            if (HasBuiltPaths || PathBuildBusy || DecorationBuildBusy)
+            {
+                PublishState("Der Umriss eines gebauten Parks ist gesperrt. "
+                    + "Zum Neuzeichnen zuerst den Park entfernen oder fertigstellen.");
+                return;
+            }
             if (_points.Count == 0) return;
             PushUndo();
             _points.Clear();
@@ -333,8 +341,19 @@ namespace ParkManager.Tools
 
         internal void TogglePlannerMode()
         {
+            if (PathBuildBusy || DecorationBuildBusy)
+            {
+                PublishState("Der aktuelle Bau wird noch von CS2 verarbeitet.");
+                return;
+            }
             if (_plannerMode)
             {
+                if (HasBuiltPaths)
+                {
+                    PublishState("Der Umriss eines gebauten Parks bleibt gesperrt. "
+                        + "Zum Bearbeiten zuerst den Park entfernen.");
+                    return;
+                }
                 _plannerMode = false;
                 PublishState("Zeichenmodus aktiv; Polygon kann bearbeitet werden.");
                 PublishPlannerState();
@@ -355,7 +374,8 @@ namespace ParkManager.Tools
 
         private void HandlePlannerClick()
         {
-            if (!_hasHover || _hoverEdge < 0) return;
+            if (!_hasHover || _hoverEdge < 0 || HasBuiltPaths
+                || PathBuildBusy || DecorationBuildBusy) return;
             var a = _worldPoints[_hoverEdge];
             var b = _worldPoints[(_hoverEdge + 1) % _worldPoints.Count];
             var ab = b.xz - a.xz;
@@ -380,6 +400,7 @@ namespace ParkManager.Tools
 
         private void HandlePlannerRightClick()
         {
+            if (HasBuiltPaths || PathBuildBusy || DecorationBuildBusy) return;
             if (_hoverEntrance < 0 || _hoverEntrance >= _entrances.Count)
             {
                 PublishState("Zum Entfernen direkt über einen Eingang hovern.");
@@ -397,6 +418,13 @@ namespace ParkManager.Tools
 
         internal void GeneratePaths()
         {
+            if (PathBuildBusy || DecorationBuildBusy || HasBuiltPaths)
+            {
+                PublishState(HasBuiltPaths
+                    ? "Zum Neuplanen zuerst den gebauten Park entfernen."
+                    : "Der aktuelle Bau wird noch von CS2 verarbeitet.");
+                return;
+            }
             if (!_plannerMode || !_closed || !IsValidPolygon())
             {
                 PublishState("Zuerst den Parkplaner für ein gültiges Polygon öffnen.");

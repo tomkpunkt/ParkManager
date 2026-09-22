@@ -2,6 +2,29 @@
 
 ## 0.5.0 – development
 
+- Fix completed-park deletion leaving wide-path node meshes behind. Internal
+  path nodes are now deleted after their edges, externally connected nodes are
+  preserved, and legacy unconnected `PedestrianPathWide01` orphans are cleaned
+  automatically. If CS2 reuses an old orphan during a new build, the two-pass
+  graph discovery adopts it into the new park instead of losing ownership.
+- Materialize degree-two path chains as fitted cubic Vanilla courses instead
+  of one straight course per preview segment. Gates and real junctions remain
+  nodes; curves are recursively split only when a 1.5 m fit tolerance or the
+  park boundary would be violated. This removes the wide prefab's circular
+  node meshes from ordinary bends while retaining editable network geometry.
+- Add staged `ParkManager PATH-DIAG` logging for critical path-rendering
+  failures. Every build now records the generated graph, temporary ECS
+  component coverage and the final Vanilla network, including segment lengths,
+  endpoint ownership, node degrees, composition widths/flags and
+  hidden/overridden or missing geometry components.
+- Stabilize furnishing materialization with the same per-build baseline model
+  used by paths. Permanent objects and surfaces are rediscovered after Apply;
+  native fence edges are the invariant while merged fence nodes remain free to
+  vary. A failed pass tags every discovered remainder before rollback.
+- Enforce workflow locks in the simulation layer as well as the UI. A built
+  park can no longer have its outline, gates, path variant, fence option,
+  density or asset plan silently changed before the relevant build is removed.
+  Tabs remain inspectable where safe, with invalid actions disabled.
 - Select the established broad Vanilla park pavement
   `PedestrianPathWide01` deterministically. The similarly named narrow asset is
   a cycle path in the current asset set and is no longer chosen as a substitute.

@@ -55,7 +55,7 @@ export const ParkManagerPanel = () => {
 
   if (!open) return null;
 
-  const canOpenStage = (index: number) => index === 0
+  const canOpenStage = (index: number) => (index === 0 && !pathBuildPresent)
     || (index === 1 && valid)
     || (index === 2 && pathBuildPresent)
     || (index === 3 && decorationBuildPresent);
@@ -110,15 +110,16 @@ export const ParkManagerPanel = () => {
       </div>
       <div className={styles.workflowFooter}>
         <div className={styles.footerLeft}>
-          <button className={styles.backButton} disabled={busy}
+          <button className={styles.backButton}
+            disabled={busy || pathBuildPresent}
             onClick={() => openStage(0)}>‹ {t.editOutline}</button>
         </div>
         <div className={styles.footerRight}>
           <button className={styles.secondaryButton}
-            disabled={busy || entranceCount === 0 || !pathPlanReady}
+            disabled={busy || pathBuildPresent || entranceCount === 0 || !pathPlanReady}
             onClick={generatePaths}>{t.recalculatePaths}</button>
           <button className={styles.primaryButton}
-            disabled={busy || entranceCount === 0}
+            disabled={busy || pathBuildPresent || entranceCount === 0}
             onClick={pathPlanReady ? buildPaths : generatePaths}>
             {pathBuildBusy ? t.busy : pathPlanReady ? t.buildPaths : t.generatePaths}
             <span className={styles.buttonArrow}>›</span>
@@ -130,7 +131,8 @@ export const ParkManagerPanel = () => {
 
   const renderAssets = () => (
     <div className={styles.assetStage}>
-      <AssetCatalog t={t} choices={assetChoices} busy={busy}
+      <AssetCatalog t={t} choices={assetChoices}
+        busy={busy || decorationBuildPresent}
         fenceEnabled={fenceEnabled} vegetationDensity={vegetationDensity}
         decorationBuildPresent={decorationBuildPresent}
         decorationPlanReady={decorationPlanReady} />
@@ -139,9 +141,10 @@ export const ParkManagerPanel = () => {
           onClick={removeBuiltPaths}>{t.removePark}</button>
         <div className={styles.footerActions}>
           <button className={styles.secondaryButton}
-            disabled={busy || !decorationPlanReady}
+            disabled={busy || decorationBuildPresent || !decorationPlanReady}
             onClick={generateDecorations}>{t.replanDecorations}</button>
-          <button className={styles.primaryButton} disabled={busy}
+          <button className={styles.primaryButton}
+            disabled={busy || decorationBuildPresent}
             onClick={decorationPlanReady ? buildDecorations : generateDecorations}>
             {decorationBuildBusy ? t.busy
               : decorationPlanReady ? t.buildDecorations : t.generateDecorations}

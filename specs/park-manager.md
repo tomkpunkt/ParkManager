@@ -1089,13 +1089,18 @@ Die Ausführung erfolgt in dieser Reihenfolge:
    `ReferencesSystem`, übrige Mitglieder portionsweise in `Modification3`
    gelöscht. Danach werden überlebende Netzknoten abgekoppelt und der Record
    entfernt.
-7. **M0.5c – Wegebau-Teil implementiert, Ingame-Abnahme offen:** Der Wegebau
+7. **M0.5c – Materialisierung implementiert, Ingame-Abnahme offen:** Der Wegebau
    merkt sich vor jeder Materialisierung alle vorhandenen Entities des gewählten
    Prefabs und entdeckt nach `Apply` die tatsächlich neu entstandenen permanenten
    Kanten, Knoten und Ersatzflächen erneut. Nur die Kantenanzahl ist invariant;
    von CS2 zusammengeführte Kreuzungsknoten lösen keinen Fehlalarm mehr aus. Ein
    echter Timeout markiert alle neu entdeckten Reste zur Löschung und protokolliert
-   getrennte Ist-/Sollzahlen. Ausstattungs-Rollback, Save/Load/Migration und der
+   getrennte Ist-/Sollzahlen. Die Ausstattung verwendet nun ebenfalls
+   Prefab-Baselines und entdeckt permanente Objekte, Flächen sowie Netzzaun-
+   kanten nach `Apply` erneut; Zaunkanten statt der instabilen Knotenzahl sind
+   invariant und ein Fehler erfasst alle Reste für den Rollback. Backend-Guards
+   sperren unzulässige Änderungen an bereits gebauten Workflowstufen.
+   Save/Load/Migration, Ingame-Abnahme und der
    Erhalt externer Einzeländerungen bleiben offen. Erst danach M0.6 und weitere
    Module beginnen. Die sichtbare Netzgeometrie wählt nun deterministisch den
    etablierten breiten Parkweg `PedestrianPathWide01`; der schmale Namensvetter

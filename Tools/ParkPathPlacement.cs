@@ -213,14 +213,16 @@ namespace ParkManager.Tools
                 var random = new Unity.Mathematics.Random(randomSeed);
                 _expectedPathCourses = 0;
                 _expectedPathAreas = 0;
+                var courses = BuildMaterializedPathCourses(ref heightData,
+                    heights, out var chainCount);
+                for (var i = 0; i < courses.Count; i++)
+                    if (CreatePathCourse(courses[i].Curve, courses[i].Length,
+                            ref random)) _expectedPathCourses++;
                 for (var i = 0; i < _pathPlan.Edges.Count; i++)
                 {
                     var edge = _pathPlan.Edges[i];
                     var a2 = _pathPlan.Nodes[edge.A].Position;
                     var b2 = _pathPlan.Nodes[edge.B].Position;
-                    var a = WorldPathPoint(edge.A, a2, ref heightData, heights);
-                    var b = WorldPathPoint(edge.B, b2, ref heightData, heights);
-                    if (CreatePathCourse(a, b, ref random)) _expectedPathCourses++;
                     if (_usesSurfaceFallback
                         && CreatePathSurface(a2, b2, edge.Width, ref heightData))
                         _expectedPathAreas++;
@@ -229,6 +231,9 @@ namespace ParkManager.Tools
                 if (_expectedPathCourses == 0
                     || _usesSurfaceFallback && _expectedPathAreas == 0)
                     throw new InvalidOperationException("Der Plan enthält keine baubaren Segmente.");
+
+                LogPlannedPathDiagnostics();
+                LogMaterializedCourseDiagnostics(courses, chainCount);
 
                 _pathBuildStartedFrame = UnityEngine.Time.frameCount;
                 _pathBuildPhase = PathBuildPhase.WaitingForMaterialization;
@@ -246,9 +251,9 @@ namespace ParkManager.Tools
 
         internal void RemoveBuiltPaths()
         {
-            if (PathBuildBusy)
+            if (PathBuildBusy || DecorationBuildBusy)
             {
-                PublishState("Entfernen ist erst nach Abschluss des Wegebaues möglich.");
+                PublishState("Entfernen ist erst nach Abschluss des Baues möglich.");
                 return;
             }
             if (!HasBuiltPaths)
@@ -314,6 +319,7 @@ namespace ParkManager.Tools
                         if (attachedPaths < _expectedPathCourses
                             || attachedAreas < _expectedPathAreas) return true;
 
+                        LogTemporaryPathDiagnostics(_pedestrianPathPrefab);
                         applyMode = ApplyMode.Apply;
                         _pathApplyFrame = UnityEngine.Time.frameCount;
                         _pathBuildPhase = PathBuildPhase.ApplyRequested;
@@ -349,6 +355,7 @@ namespace ParkManager.Tools
                         + $"{permanentEdges}/{_expectedPathCourses} edges, "
                         + $"{permanentNodes} merged nodes and "
                         + $"{permanentAreas}/{_expectedPathAreas} surfaces.");
+                    LogPermanentPathDiagnostics(_pendingBuildRecord);
                     FinalizeEditablePathBuild();
                     return true;
                 case PathBuildPhase.ClearRequested:
@@ -543,12 +550,12 @@ namespace ParkManager.Tools
             return new float3(point.x, height, point.y);
         }
 
-        private bool CreatePathCourse(float3 a, float3 b,
+        private bool CreatePathCourse(Bezier4x3 curve, float length,
             ref Unity.Mathematics.Random random)
         {
-            var length = math.distance(a, b);
+            var a = curve.a;
+            var b = curve.d;
             if (length < 1f) return false;
-            var curve = NetUtils.StraightCurve(a, b);
             var definition = EntityManager.CreateEntity();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
@@ -720,20 +727,39 @@ namespace ParkManager.Tools
             using (var entities = _permanentPathQuery
                        .ToEntityArray(Allocator.TempJob))
             {
+                // Edges establish ownership first. The second pass can then
+                // safely adopt a baseline node that CS2 reused from an older
+                // broken cleanup, but only when every live connection belongs
+                // to this new park. Existing street/gate nodes stay external.
                 for (var i = 0; i < entities.Length; i++)
                 {
                     var entity = entities[i];
                     if (EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab
-                        != _pedestrianPathPrefab) continue;
-                    var kind = EntityManager.HasComponent<Game.Net.Edge>(entity)
-                        ? ParkPathMemberKind.Edge
-                        : ParkPathMemberKind.Node;
+                            != _pedestrianPathPrefab
+                        || !EntityManager.HasComponent<Game.Net.Edge>(entity))
+                        continue;
                     if (!IsMaterializedBuildEntity(entity, park,
                             _pathEntityBaseline)) continue;
-                    if (!SetMaterializedMember(entity, park, kind,
+                    if (!SetMaterializedMember(entity, park,
+                            ParkPathMemberKind.Edge,
                             ref nextElementId)) continue;
-                    if (kind == ParkPathMemberKind.Edge) edgeCount++;
-                    else nodeCount++;
+                    edgeCount++;
+                }
+
+                for (var i = 0; i < entities.Length; i++)
+                {
+                    var entity = entities[i];
+                    if (EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab
+                            != _pedestrianPathPrefab
+                        || !EntityManager.HasComponent<Game.Net.Node>(entity))
+                        continue;
+                    if (!IsMaterializedBuildEntity(entity, park,
+                            _pathEntityBaseline)
+                        && !IsReusedOrphanNodeForPark(entity, park)) continue;
+                    if (!SetMaterializedMember(entity, park,
+                            ParkPathMemberKind.Node,
+                            ref nextElementId)) continue;
+                    nodeCount++;
                 }
             }
 
@@ -758,6 +784,27 @@ namespace ParkManager.Tools
             return EntityManager.HasComponent<ParkPathMember>(entity)
                 && EntityManager.GetComponentData<ParkPathMember>(entity).Park
                 == park;
+        }
+
+        private bool IsReusedOrphanNodeForPark(Entity node, Entity park)
+        {
+            if (!EntityManager.HasBuffer<ConnectedEdge>(node)) return false;
+            var ownConnections = 0;
+            var connected = EntityManager.GetBuffer<ConnectedEdge>(node, true);
+            for (var i = 0; i < connected.Length; i++)
+            {
+                var edge = connected[i].m_Edge;
+                if (edge == Entity.Null || !EntityManager.Exists(edge)
+                    || EntityManager.HasComponent<Deleted>(edge)) continue;
+                if (!EntityManager.HasComponent<ParkPathMember>(edge)
+                    || EntityManager.GetComponentData<ParkPathMember>(edge).Park
+                        != park) return false;
+                ownConnections++;
+            }
+            if (ownConnections == 0) return false;
+            Mod.Log.Info($"ParkManager adopted reused orphan path node {node} "
+                + $"into park {park} with {ownConnections} owned connections.");
+            return true;
         }
 
         private bool SetMaterializedMember(Entity entity, Entity park,
@@ -874,6 +921,7 @@ namespace ParkManager.Tools
             TagMaterializedPathEntities(_pendingBuildRecord,
                 out var materializedEdges, out var materializedNodes,
                 out var materializedAreas);
+            LogPermanentPathDiagnostics(_pendingBuildRecord);
             DeleteEditableMembers(_pendingBuildRecord);
             if (_pendingBuildRecord != Entity.Null
                 && EntityManager.Exists(_pendingBuildRecord)

@@ -2,6 +2,7 @@ using Game;
 using Game.Areas;
 using Game.Common;
 using Game.Net;
+using Game.Prefabs;
 using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
@@ -18,14 +19,19 @@ namespace ParkManager.Tools
     /// </summary>
     public sealed partial class ParkBundleNetworkCleanupSystem : GameSystemBase
     {
+        private const string ParkPathPrefabName = "PedestrianPathWide01";
         private EntityQuery _deletedSurfaceQuery;
         private EntityQuery _requestQuery;
         private EntityQuery _memberQuery;
+        private EntityQuery _legacyOrphanNodeQuery;
+        private PrefabSystem _prefabSystem;
+        private int _nextOrphanScanFrame;
 
         [Preserve]
         protected override void OnCreate()
         {
             base.OnCreate();
+            _prefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
             _deletedSurfaceQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[]
@@ -58,6 +64,21 @@ namespace ParkManager.Tools
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
+            _legacyOrphanNodeQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[]
+                {
+                    ComponentType.ReadOnly<Game.Net.Node>(),
+                    ComponentType.ReadOnly<PrefabRef>(),
+                    ComponentType.ReadOnly<ConnectedEdge>(),
+                },
+                None = new[]
+                {
+                    ComponentType.ReadOnly<ParkPathMember>(),
+                    ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Temp>(),
+                },
+            });
         }
 
         [Preserve]
@@ -65,6 +86,7 @@ namespace ParkManager.Tools
         {
             CollectBulldozedSurface();
             DeleteNetworkEdges();
+            DeleteLegacyOrphanNodes();
         }
 
         private void CollectBulldozedSurface()
@@ -118,12 +140,56 @@ namespace ParkManager.Tools
                 Mod.Log.Info($"ParkManager bundle cleanup marked {deleted} network "
                     + "edges in Modification2 before ReferencesSystem.");
         }
+
+        /// <summary>
+        /// Repairs nodes detached by 0.5 builds before the cleanup fix. A
+        /// permanent network node with this exact ParkManager path prefab and
+        /// no live edge cannot represent a usable player network element.
+        /// </summary>
+        private void DeleteLegacyOrphanNodes()
+        {
+            if (UnityEngine.Time.frameCount < _nextOrphanScanFrame) return;
+            _nextOrphanScanFrame = UnityEngine.Time.frameCount + 120;
+            if (_legacyOrphanNodeQuery.IsEmptyIgnoreFilter) return;
+
+            using var nodes = _legacyOrphanNodeQuery.ToEntityArray(Allocator.Temp);
+            var deleted = 0;
+            for (var i = 0; i < nodes.Length; i++)
+            {
+                var node = nodes[i];
+                var prefabEntity = EntityManager.GetComponentData<PrefabRef>(node)
+                    .m_Prefab;
+                if (!_prefabSystem.TryGetPrefab<PrefabBase>(prefabEntity,
+                        out var prefab)
+                    || prefab == null || !prefab.isBuiltin
+                    || prefab.name != ParkPathPrefabName
+                    || HasLiveEdge(node)) continue;
+                EntityManager.AddComponent<Deleted>(node);
+                deleted++;
+            }
+            if (deleted > 0)
+                Mod.Log.Info($"ParkManager removed {deleted} legacy orphan path "
+                    + "nodes left by an earlier bundle cleanup.");
+        }
+
+        private bool HasLiveEdge(Entity node)
+        {
+            var connected = EntityManager.GetBuffer<ConnectedEdge>(node, true);
+            for (var i = 0; i < connected.Length; i++)
+            {
+                var edge = connected[i].m_Edge;
+                if (edge != Entity.Null && EntityManager.Exists(edge)
+                    && !EntityManager.HasComponent<Deleted>(edge)) return true;
+            }
+            return false;
+        }
     }
 
     /// <summary>
-    /// Removes ordinary members of a bulldozed park in bounded batches. Network
-    /// nodes are left to Vanilla after their edges disappear; their logical
-    /// membership is detached before the headless build record is removed.
+    /// Removes ordinary members and ParkManager-owned network nodes of a
+    /// bulldozed park in bounded batches. Gate nodes merged into an existing
+    /// street/path were never tagged as members. A tagged node is preserved
+    /// only if a later external edit connected it to a non-park edge.
     /// </summary>
     public sealed partial class ParkBundleCleanupSystem : GameSystemBase
     {
@@ -177,20 +243,42 @@ namespace ParkManager.Tools
         private void ProcessBundle(Entity park, NativeArray<Entity> members,
             EntityCommandBuffer buffer)
         {
+            var liveEdges = CountLiveParkEdges(park, members);
             var marked = 0;
             var remaining = 0;
-            var liveEdges = 0;
+            var deletedNodes = 0;
+            var detachedExternalNodes = 0;
             for (var i = 0; i < members.Length; i++)
             {
                 var entity = members[i];
                 if (EntityManager.GetComponentData<ParkPathMember>(entity).Park
                     != park) continue;
-                if (EntityManager.HasComponent<Edge>(entity))
+                if (EntityManager.HasComponent<Edge>(entity)) continue;
+                if (EntityManager.HasComponent<Game.Net.Node>(entity))
                 {
-                    liveEdges++;
+                    // Wait until ReferencesSystem has consumed the Deleted
+                    // park edges and updated ConnectedEdge buffers.
+                    if (liveEdges > 0)
+                    {
+                        remaining++;
+                        continue;
+                    }
+                    if (HasLiveExternalEdge(entity, park))
+                    {
+                        buffer.RemoveComponent<ParkPathMember>(entity);
+                        detachedExternalNodes++;
+                        continue;
+                    }
+                    if (marked >= MembersPerPass)
+                    {
+                        remaining++;
+                        continue;
+                    }
+                    buffer.AddComponent<Deleted>(entity);
+                    marked++;
+                    deletedNodes++;
                     continue;
                 }
-                if (EntityManager.HasComponent<Game.Net.Node>(entity)) continue;
                 if (marked >= MembersPerPass)
                 {
                     remaining++;
@@ -208,7 +296,9 @@ namespace ParkManager.Tools
                 EntityManager.SetComponentData(park, request);
                 if (marked > 0)
                     Mod.Log.Info($"ParkManager bundle cleanup marked {marked} "
-                        + $"ordinary members; {remaining} wait for a later pass.");
+                        + $"ordinary members/network nodes ({deletedNodes} nodes); "
+                        + $"{remaining} wait for a later pass; "
+                        + $"{detachedExternalNodes} externally connected nodes preserved.");
                 return;
             }
 
@@ -221,19 +311,39 @@ namespace ParkManager.Tools
                 return;
             }
 
-            var detachedNodes = 0;
+            buffer.AddComponent<Deleted>(park);
+            Mod.Log.Info($"ParkManager bundle cleanup completed for {park}; "
+                + "all unshared network nodes were removed.");
+        }
+
+        private int CountLiveParkEdges(Entity park, NativeArray<Entity> members)
+        {
+            var count = 0;
             for (var i = 0; i < members.Length; i++)
             {
                 var entity = members[i];
                 if (EntityManager.GetComponentData<ParkPathMember>(entity).Park
-                        != park
-                    || !EntityManager.HasComponent<Game.Net.Node>(entity)) continue;
-                buffer.RemoveComponent<ParkPathMember>(entity);
-                detachedNodes++;
+                        == park
+                    && EntityManager.HasComponent<Edge>(entity)) count++;
             }
-            buffer.AddComponent<Deleted>(park);
-            Mod.Log.Info($"ParkManager bundle cleanup completed for {park}; "
-                + $"detached {detachedNodes} surviving network nodes.");
+            return count;
+        }
+
+        private bool HasLiveExternalEdge(Entity node, Entity park)
+        {
+            if (!EntityManager.HasBuffer<ConnectedEdge>(node)) return false;
+            var connected = EntityManager.GetBuffer<ConnectedEdge>(node, true);
+            for (var i = 0; i < connected.Length; i++)
+            {
+                var edge = connected[i].m_Edge;
+                if (edge == Entity.Null || !EntityManager.Exists(edge)
+                    || EntityManager.HasComponent<Deleted>(edge)) continue;
+                if (EntityManager.HasComponent<ParkPathMember>(edge)
+                    && EntityManager.GetComponentData<ParkPathMember>(edge).Park
+                        == park) continue;
+                return true;
+            }
+            return false;
         }
     }
 }

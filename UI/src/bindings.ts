@@ -5,6 +5,7 @@ const MOD = "ParkManager";
 export const panelOpen$ = bindValue<boolean>(MOD, "PanelOpen", false);
 export const toolActive$ = bindValue<boolean>(MOD, "ToolActive", false);
 export const pointCount$ = bindValue<number>(MOD, "PointCount", 0);
+export const polygonArea$ = bindValue<number>(MOD, "PolygonArea", 0);
 export const polygonClosed$ = bindValue<boolean>(MOD, "PolygonClosed", false);
 export const polygonValid$ = bindValue<boolean>(MOD, "PolygonValid", false);
 export const status$ = bindValue<string>(MOD, "Status", "");
@@ -15,9 +16,12 @@ export const pathBuildBusy$ = bindValue<boolean>(MOD, "PathBuildBusy", false);
 export const pathBuildPresent$ = bindValue<boolean>(MOD, "PathBuildPresent", false);
 export const pathBuildSummary$ = bindValue<string>(MOD, "PathBuildSummary", "");
 export const pathType$ = bindValue<number>(MOD, "PathType", 1);
+export const siteType$ = bindValue<number>(MOD, "SiteType", 0);
 export const snapMask$ = bindValue<number>(MOD, "SnapMask", 0);
 export const fenceEnabled$ = bindValue<boolean>(MOD, "FenceEnabled", false);
 export const vegetationDensity$ = bindValue<number>(MOD, "VegetationDensity", 100);
+export const furnitureDensity$ = bindValue<number>(MOD, "FurnitureDensity", 100);
+export const decorationEnabledMask$ = bindValue<number>(MOD, "DecorationEnabledMask", 0x2f);
 export const decorationPlanReady$ = bindValue<boolean>(MOD, "DecorationPlanReady", false);
 export const decorationBuildBusy$ = bindValue<boolean>(MOD, "DecorationBuildBusy", false);
 export const decorationBuildPresent$ = bindValue<boolean>(MOD, "DecorationBuildPresent", false);
@@ -35,11 +39,16 @@ export const togglePlannerMode = () => trigger(MOD, "TogglePlannerMode");
 export const generatePaths = () => trigger(MOD, "GeneratePaths");
 export const buildPaths = () => trigger(MOD, "BuildPaths");
 export const setPathType = (type: number) => trigger(MOD, "SetPathType", type);
+export const setSiteType = (type: number) => trigger(MOD, "SetSiteType", type);
 export const removeBuiltPaths = () => trigger(MOD, "RemoveBuiltPaths");
 export const generateDecorations = () => trigger(MOD, "GenerateDecorations");
 export const toggleFence = () => trigger(MOD, "ToggleFence");
 export const setVegetationDensity = (density: number) =>
   trigger(MOD, "SetVegetationDensity", density);
+export const setFurnitureDensity = (density: number) =>
+  trigger(MOD, "SetFurnitureDensity", density);
+export const toggleDecorationCategory = (kind: number) =>
+  trigger(MOD, "ToggleDecorationCategory", kind);
 export const buildDecorations = () => trigger(MOD, "BuildDecorations");
 export const removeBuiltDecorations = () => trigger(MOD, "RemoveBuiltDecorations");
 export const finishPark = () => trigger(MOD, "FinishPark");

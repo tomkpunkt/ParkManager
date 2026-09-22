@@ -2,17 +2,22 @@ import { useEffect, useState } from "react";
 import { useValue } from "cs2/api";
 import {
   assetOptionsJson$, buildDecorations, buildPaths, clearPolygon,
-  decorationBuildBusy$, decorationBuildPresent$, decorationPlanReady$,
-  entranceCount$, fenceEnabled$, finishPark, generateDecorations, generatePaths,
-  locale$, panelOpen$, parkCount$, pathBuildBusy$,
+  decorationBuildBusy$, decorationBuildPresent$, decorationEnabledMask$,
+  decorationPlanReady$,
+  entranceCount$, finishPark, generateDecorations, generatePaths,
+  furnitureDensity$, locale$, panelOpen$, pathBuildBusy$,
   pathBuildPresent$, pathPlanReady$, pathType$, plannerMode$, pointCount$,
-  polygonClosed$, polygonValid$, removeBuiltDecorations, removeBuiltPaths,
-  setPathType, togglePlannerMode, toggleTool, vegetationDensity$,
+  polygonArea$, polygonClosed$, polygonValid$, removeBuiltDecorations, removeBuiltPaths,
+  selectAsset, setPathType, setSiteType, siteType$, togglePlannerMode, toggleTool,
+  vegetationDensity$,
 } from "./bindings";
 import { parseAssetChoices } from "./assetChoices";
 import { AssetCatalog } from "./components/AssetCatalog";
 import { SnapControls, StatePill } from "./components/WorkflowParts";
 import { getTexts } from "./i18n";
+import arrowLeftIcon from "./assets/arrow-left.svg";
+import arrowRightIcon from "./assets/arrow-right.svg";
+import refreshIcon from "./assets/refresh.svg";
 import styles from "./panel.module.less";
 
 const stop = (event: any) => event.stopPropagation();
@@ -24,9 +29,11 @@ const stop = (event: any) => event.stopPropagation();
 export const ParkManagerPanel = () => {
   // Hooks stay unconditional: conditional hooks caused React #310 in Cohtml.
   const [activeStage, setActiveStage] = useState(0);
+  const [failedSurfaceIcons, setFailedSurfaceIcons] = useState<Record<string, boolean>>({});
   const open = useValue(panelOpen$);
   const t = getTexts(useValue(locale$));
   const pointCount = useValue(pointCount$);
+  const polygonArea = useValue(polygonArea$);
   const closed = useValue(polygonClosed$);
   const valid = useValue(polygonValid$);
   const plannerMode = useValue(plannerMode$);
@@ -35,13 +42,17 @@ export const ParkManagerPanel = () => {
   const pathBuildBusy = useValue(pathBuildBusy$);
   const pathBuildPresent = useValue(pathBuildPresent$);
   const pathType = useValue(pathType$);
-  const fenceEnabled = useValue(fenceEnabled$);
+  const siteType = useValue(siteType$);
   const vegetationDensity = useValue(vegetationDensity$);
+  const furnitureDensity = useValue(furnitureDensity$);
+  const decorationEnabledMask = useValue(decorationEnabledMask$);
   const decorationPlanReady = useValue(decorationPlanReady$);
   const decorationBuildBusy = useValue(decorationBuildBusy$);
   const decorationBuildPresent = useValue(decorationBuildPresent$);
-  const parkCount = useValue(parkCount$);
   const assetChoices = parseAssetChoices(useValue(assetOptionsJson$));
+  const surfaceChoice = assetChoices.surface;
+  const visibleSurfaces = (surfaceChoice?.options ?? []).filter((option) =>
+    !failedSurfaceIcons[option.icon]);
 
   const busy = pathBuildBusy || decorationBuildBusy;
   const workflowStage = decorationBuildPresent ? 3
@@ -69,7 +80,6 @@ export const ParkManagerPanel = () => {
   };
 
   const renderOutline = () => (
-    <div className={styles.simpleWorkspace}>
       <div className={styles.stageColumn}>
         <div className={styles.stageCopy}>
           <span className={styles.eyebrow}>1 / 4 · {t.steps[0]}</span>
@@ -77,27 +87,16 @@ export const ParkManagerPanel = () => {
           <p>{t.outlineText}</p>
           <div className={styles.stateRow}>
             <StatePill success={valid}>{outlineState}</StatePill>
-            {parkCount > 0 ? <StatePill success>{t.builtParks(parkCount)}</StatePill> : null}
+            {pointCount >= 3
+              ? <StatePill>{t.outlineArea(Math.round(polygonArea).toLocaleString())}</StatePill>
+              : null}
           </div>
         </div>
       </div>
-      <div className={styles.workflowFooter}>
-        <div className={styles.footerLeft} />
-        <div className={styles.footerRight}>
-          <button className={styles.secondaryButton} disabled={pointCount === 0}
-            onClick={clearPolygon}>{t.reset}</button>
-          <button className={styles.primaryButton} disabled={!valid}
-            onClick={() => openStage(1)}>
-            {t.continuePaths}<span className={styles.buttonArrow}>›</span>
-          </button>
-        </div>
-      </div>
-    </div>
   );
 
   const renderPaths = () => (
-    <div className={styles.simpleWorkspace}>
-      <div className={styles.stageColumn}>
+      <div className={`${styles.stageColumn} ${styles.pathStageColumn}`}>
         <div className={styles.stageCopy}>
           <span className={styles.eyebrow}>2 / 4 · {t.steps[1]}</span>
           <h2>{t.pathsTitle}</h2>
@@ -107,7 +106,20 @@ export const ParkManagerPanel = () => {
             <StatePill success={entranceCount > 0}>{t.pathsGates(entranceCount)}</StatePill>
             {pathPlanReady ? <StatePill success>{t.steps[1]}</StatePill> : null}
           </div>
-          <div className={styles.pathTypeControl}>
+        </div>
+        <div className={styles.pathSettings}>
+          <div className={styles.compactSetting}>
+            <span>{t.siteType}</span>
+            <div className={styles.segmentedControl}>
+              <button className={siteType === 0 ? styles.segmentActive : ""}
+                disabled={busy || pathBuildPresent}
+                onClick={() => setSiteType(0)}>{t.sitePark}</button>
+              <button className={siteType === 1 ? styles.segmentActive : ""}
+                disabled={busy || pathBuildPresent}
+                onClick={() => setSiteType(1)}>{t.sitePlaza}</button>
+            </div>
+          </div>
+          <div className={styles.compactSetting}>
             <span>{t.pathType}</span>
             <div className={styles.segmentedControl}>
               <button className={pathType === 0 ? styles.segmentActive : ""}
@@ -118,57 +130,40 @@ export const ParkManagerPanel = () => {
                 onClick={() => setPathType(1)}>{t.pathWide}</button>
             </div>
           </div>
+          <div className={styles.compactSetting}>
+            <span>{t.background}</span>
+            <div className={styles.surfaceChoices}>
+              {visibleSurfaces.map((option) => (
+                <button key={option.name} title={option.name}
+                  className={surfaceChoice?.selected === option.name
+                    ? styles.surfaceChoiceActive : ""}
+                  disabled={busy || pathBuildPresent}
+                  onClick={() => selectAsset("Surface", option.name)}>
+                  <img src={option.icon} alt=""
+                    onError={() => setFailedSurfaceIcons((current) =>
+                      current[option.icon] ? current
+                        : { ...current, [option.icon]: true })} />
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-      <div className={styles.workflowFooter}>
-        <div className={styles.footerLeft}>
-          <button className={styles.backButton}
-            disabled={busy || pathBuildPresent}
-            onClick={() => openStage(0)}>‹ {t.editOutline}</button>
-        </div>
-        <div className={styles.footerRight}>
-          <button className={styles.secondaryButton}
-            disabled={busy || pathBuildPresent || entranceCount === 0 || !pathPlanReady}
-            onClick={generatePaths}>{t.recalculatePaths}</button>
-          <button className={styles.primaryButton}
-            disabled={busy || pathBuildPresent || entranceCount === 0}
-            onClick={pathPlanReady ? buildPaths : generatePaths}>
-            {pathBuildBusy ? t.busy : pathPlanReady ? t.buildPaths : t.generatePaths}
-            <span className={styles.buttonArrow}>›</span>
-          </button>
-        </div>
-      </div>
-    </div>
   );
 
   const renderAssets = () => (
     <div className={styles.assetStage}>
       <AssetCatalog t={t} choices={assetChoices}
         busy={busy || decorationBuildPresent}
-        fenceEnabled={fenceEnabled} vegetationDensity={vegetationDensity}
+        vegetationDensity={vegetationDensity}
+        furnitureDensity={furnitureDensity}
+        enabledMask={decorationEnabledMask}
         decorationBuildPresent={decorationBuildPresent}
         decorationPlanReady={decorationPlanReady} />
-      <div className={styles.assetFooter}>
-        <button className={styles.dangerButton} disabled={busy}
-          onClick={removeBuiltPaths}>{t.removePark}</button>
-        <div className={styles.footerActions}>
-          <button className={styles.secondaryButton}
-            disabled={busy || decorationBuildPresent || !decorationPlanReady}
-            onClick={generateDecorations}>{t.replanDecorations}</button>
-          <button className={styles.primaryButton}
-            disabled={busy || decorationBuildPresent}
-            onClick={decorationPlanReady ? buildDecorations : generateDecorations}>
-            {decorationBuildBusy ? t.busy
-              : decorationPlanReady ? t.buildDecorations : t.generateDecorations}
-            <span className={styles.buttonArrow}>›</span>
-          </button>
-        </div>
-      </div>
     </div>
   );
 
   const renderComplete = () => (
-    <div className={styles.simpleWorkspace}>
       <div className={styles.stageColumn}>
         <div className={styles.stageCopy}>
           <span className={styles.eyebrow}>4 / 4 · {t.steps[3]}</span>
@@ -177,21 +172,67 @@ export const ParkManagerPanel = () => {
           <div className={styles.stateRow}>
             <StatePill success>{t.pathsBuilt}</StatePill>
             <StatePill success>{t.decorationsBuilt}</StatePill>
-            <StatePill success>{t.builtParks(parkCount)}</StatePill>
           </div>
         </div>
       </div>
-      <div className={styles.workflowFooter}>
-        <div className={styles.footerLeft}>
-          <button className={styles.backButton} disabled={busy}
-            onClick={removeBuiltDecorations}>{t.removeDecorations}</button>
-        </div>
-        <div className={styles.footerRight}>
+  );
+
+  const renderFooter = () => (
+    <div className={styles.panelFooter}>
+      <div className={styles.footerLeft}>
+        {activeStage === 1 ? <button className={styles.backButton}
+          disabled={busy || pathBuildPresent}
+          onClick={() => openStage(0)}>
+          <img className={styles.buttonIcon} src={arrowLeftIcon} alt="" />
+          {t.editOutline}</button> : null}
+        {activeStage === 2 ? <button className={styles.dangerButton}
+          disabled={busy} onClick={removeBuiltPaths}>{t.removePark}</button> : null}
+        {activeStage === 3 ? <button className={styles.backButton}
+          disabled={busy} onClick={removeBuiltDecorations}>
+          {t.removeDecorations}</button> : null}
+      </div>
+      <div className={styles.footerRight}>
+        {activeStage === 0 ? <>
+          <button className={styles.secondaryButton} disabled={pointCount === 0}
+            onClick={clearPolygon}>{t.reset}</button>
+          <button className={styles.primaryButton} disabled={!valid}
+            onClick={() => openStage(1)}>
+            {t.continuePaths}<img className={styles.buttonIcon} src={arrowRightIcon} alt="" />
+          </button>
+        </> : null}
+        {activeStage === 1 ? <>
+          <button className={styles.secondaryButton}
+            disabled={busy || pathBuildPresent || entranceCount === 0 || !pathPlanReady}
+            onClick={generatePaths}>
+            <img className={styles.buttonIcon} src={refreshIcon} alt="" />
+            {t.recalculatePaths}</button>
+          <button className={styles.primaryButton}
+            disabled={busy || pathBuildPresent || entranceCount === 0}
+            onClick={pathPlanReady ? buildPaths : generatePaths}>
+            {pathBuildBusy ? t.busy : pathPlanReady ? t.buildPaths : t.generatePaths}
+            <img className={styles.buttonIcon} src={arrowRightIcon} alt="" />
+          </button>
+        </> : null}
+        {activeStage === 2 ? <>
+          <button className={styles.secondaryButton}
+            disabled={busy || decorationBuildPresent || !decorationPlanReady}
+            onClick={generateDecorations}>
+            <img className={styles.buttonIcon} src={refreshIcon} alt="" />
+            {t.replanDecorations}</button>
+          <button className={styles.primaryButton}
+            disabled={busy || decorationBuildPresent}
+            onClick={decorationPlanReady ? buildDecorations : generateDecorations}>
+            {decorationBuildBusy ? t.busy
+              : decorationPlanReady ? t.buildDecorations : t.generateDecorations}
+            <img className={styles.buttonIcon} src={arrowRightIcon} alt="" />
+          </button>
+        </> : null}
+        {activeStage === 3 ? <>
           <button className={styles.dangerButton} disabled={busy}
             onClick={removeBuiltPaths}>{t.removePark}</button>
           <button className={styles.successButton} disabled={busy}
             onClick={finishPark}>{t.finishPark}</button>
-        </div>
+        </> : null}
       </div>
     </div>
   );
@@ -199,7 +240,7 @@ export const ParkManagerPanel = () => {
   return (
     <div className={styles.panel} onMouseDown={stop} onMouseUp={stop}
       onClick={stop} onContextMenu={stop}>
-      <div className={styles.rail}>
+      <div className={styles.panelHeader}>
         <div className={styles.brand}>
           <span className={styles.brandMark}>P</span><span>ParkManager</span>
         </div>
@@ -226,11 +267,14 @@ export const ParkManagerPanel = () => {
           onClick={toggleTool}>×</button>
       </div>
 
-      <div className={styles.content}>
+      <div className={`${styles.panelBody} ${
+        activeStage <= 1 || activeStage === 3 ? styles.compactBody : ""} ${
+        activeStage === 2 ? styles.assetBody : ""}`}>
         {activeStage === 0 ? renderOutline()
           : activeStage === 1 ? renderPaths()
             : activeStage === 2 ? renderAssets() : renderComplete()}
       </div>
+      {renderFooter()}
     </div>
   );
 };

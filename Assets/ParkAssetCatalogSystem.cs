@@ -349,7 +349,10 @@ namespace ParkManager.Assets
                 if (EntityManager.HasComponent<AreaGeometryData>(entity)
                     && EntityManager.HasComponent<SurfaceData>(entity)
                     && EntityManager.GetComponentData<AreaGeometryData>(entity).m_Type
-                        == AreaType.Surface)
+                        == AreaType.Surface
+                    && prefab.TryGet<UIObject>(out var surfaceUi)
+                    && surfaceUi != null
+                    && !string.IsNullOrWhiteSpace(surfaceUi.m_Icon))
                     Add(ParkAssetCategory.Surface, name, entity);
 
                 if (EntityManager.HasComponent<PlantData>(entity)

@@ -4,6 +4,9 @@
 @danger: #e97868;
 @surface: rgba(12, 20, 35, 0.72);
 @surfaceStrong: rgba(12, 20, 35, 0.92);
+// Shared outer inset: match the established spacing of the panel header.
+@panelInset: 10rem;
+@panelGap: 10rem;
 
 .panel {
   position: absolute;
@@ -23,11 +26,11 @@
   pointer-events: auto;
 }
 
-.rail {
+.panelHeader {
   display: flex;
   align-items: center;
   min-height: 56rem;
-  padding: 7rem 10rem;
+  padding: 7rem @panelInset;
   box-sizing: border-box;
   border-bottom: 1rem solid var(--menuBorderColor1);
   background-color: @surface;
@@ -188,18 +191,104 @@
   line-height: 30rem;
 }
 
-.content {
+.panelBody {
   display: flex;
   min-height: 330rem;
-  padding: 18rem 22rem;
+  padding: 18rem @panelInset 0;
   box-sizing: border-box;
 }
 
-.simpleWorkspace {
+/* Keep the three compact workflow steps identical, with room for path options. */
+.compactBody {
+  min-height: 170rem;
+  padding-top: 6rem;
+}
+
+.compactBody .stageColumn {
+  padding-bottom: 0;
+}
+
+.compactBody .eyebrow { margin-bottom: 3rem; }
+.compactBody .stageCopy h2 { margin-bottom: 3rem; }
+.compactBody .stageCopy p { margin-bottom: 5rem; }
+.compactBody .statePill { min-height: 22rem; padding-top: 2rem; padding-bottom: 2rem; }
+
+.stageColumn.pathStageColumn {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.pathStageColumn .stageCopy {
+  flex: 1 1 auto;
+}
+
+.pathSettings {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  width: 100%;
+  gap: 4rem;
+  flex: 0 0 700rem;
+  align-self: flex-start;
+  margin-left: 24rem;
+}
+
+.compactSetting {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 32rem;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+}
+
+.compactSetting > span {
+  flex: 0 0 88rem;
+  margin-right: 10rem;
+  text-align: right;
+}
+
+.compactSetting .segmentedControl {
+  flex: 0 0 560rem;
+}
+
+.compactSetting .segmentedControl button {
+  flex: 1 1 50%;
+  min-width: 0;
+  height: 30rem;
+}
+
+.surfaceChoices {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  flex: 0 0 560rem;
+  min-width: 0;
+  min-height: 32rem;
+  max-height: 74rem;
+  gap: @panelGap;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.surfaceChoices button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40rem;
+  height: 32rem;
+  padding: 3rem;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 4rem;
+  background-color: rgba(10, 19, 31, 0.72);
+}
+
+.surfaceChoices button:hover:not(:disabled) { background-color: var(--menuHoverColor); }
+.surfaceChoices img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.surfaceChoices .surfaceChoiceActive {
+  border-color: @paths;
+  background-color: rgba(79, 195, 247, 0.24);
 }
 
 .stageColumn {
@@ -207,17 +296,17 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  padding: 0 24rem 10rem 18rem;
+  padding: 0 0 10rem;
   box-sizing: border-box;
 }
 
-.workflowFooter {
+.panelFooter {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  flex: 0 0 52rem;
-  min-height: 52rem;
-  padding: 0 24rem 6rem 18rem;
+  gap: @panelGap;
+  min-height: 44rem;
+  padding: 0 @panelInset 8rem;
   box-sizing: border-box;
 }
 
@@ -225,11 +314,21 @@
 .footerRight {
   display: flex;
   align-items: center;
+  gap: @panelGap;
   min-height: 36rem;
 }
 
 .footerRight { justify-content: flex-end; }
-.footerRight > button + button { margin-left: 8rem; }
+
+.panelFooter button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5rem;
+}
+
+.buttonIcon { width: 14rem; height: 14rem; flex: 0 0 14rem; }
+.primaryButton .buttonIcon { filter: brightness(0); }
 
 .stageCopy {
   display: flex;
@@ -426,17 +525,13 @@
   background-color: @assets;
 }
 
-.workflowFooter .primaryButton,
-.workflowFooter .secondaryButton,
-.workflowFooter .dangerButton,
-.workflowFooter .successButton {
+.panelFooter .primaryButton,
+.panelFooter .secondaryButton,
+.panelFooter .dangerButton,
+.panelFooter .successButton {
   width: 170rem;
   min-width: 170rem;
   margin: 0;
-}
-
-.workflowFooter .footerRight > button + button {
-  margin-left: 8rem;
 }
 
 .primaryButton:hover,
@@ -462,13 +557,6 @@
   pointer-events: none;
 }
 
-.buttonArrow {
-  float: right;
-  margin-left: 10rem;
-  font-size: 18rem;
-  line-height: 14rem;
-}
-
 .manageLabel {
   margin-bottom: 6rem;
   color: var(--menuText2Normal);
@@ -480,38 +568,50 @@
 /* Asset step: fixed two-column workspace. Opening a category only replaces
    the right pane, so the whole panel no longer jumps in height. */
 .assetStage {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  display: block;
   width: 100%;
+  height: 320rem;
 }
 
+.assetBody { padding-bottom: @panelGap; }
+
 .assetStageHeader {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  min-height: 62rem;
+  width: 49%;
+  height: 80rem;
 }
 
 .assetStageHeader > div:first-child {
-  flex: 0 0 510rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 .assetStageHeader p { margin-bottom: 4rem; }
 
-.assetSettings {
+.densitySettings {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
-  align-items: center;
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-top: 30rem;
-  margin-left: 14rem;
+  flex-direction: column;
+  align-items: stretch;
+  width: 49%;
+  height: 80rem;
 }
 
+.densitySettings .densityControl + .densityControl { margin-top: @panelGap; }
+
 .densityControl {
+  position: relative;
   display: flex;
   align-items: center;
-  min-height: 36rem;
-  padding: 5rem 10rem;
+  min-height: 35rem;
+  padding: 5rem 80rem 5rem 10rem;
   box-sizing: border-box;
   border: 1rem solid var(--menuBorderColor1);
   border-radius: 5rem;
@@ -520,12 +620,15 @@
   font-size: var(--fontSizeXS);
   font-weight: bold;
   white-space: nowrap;
-  flex: 1 1 50%;
+  flex: 1 1 0;
 }
+
+.densityControl > span { flex: 0 0 140rem; }
 
 .densitySlider {
   position: relative;
-  width: 126rem;
+  flex: 0 0 320rem;
+  width: 320rem;
   height: 24rem;
   margin: 0 9rem;
   padding: 0;
@@ -569,10 +672,16 @@
 }
 
 .densityControl strong {
-  min-width: 52rem;
+  position: absolute;
+  top: 8rem;
+  right: 10rem;
+  display: block;
+  width: 60rem;
+  min-width: 60rem;
   color: var(--menuText1Normal);
   text-align: right;
   white-space: nowrap;
+  word-break: keep-all;
 }
 
 .densitySlider[disabled] { opacity: 0.35; pointer-events: none; }
@@ -623,18 +732,23 @@
 .fenceToggleActive .toggleKnob { left: 17rem; margin-left: 0; background-color: @assets; }
 
 .assetWorkspace {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 202rem;
-  margin-top: 8rem;
+  position: absolute;
+  top: 90rem;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 230rem;
 }
 
 .assetGrid {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  flex: 0 0 510rem;
-  margin: -3rem;
+  width: 49%;
+  height: 230rem;
 }
 
 .assetTile {
@@ -645,9 +759,10 @@
   justify-content: center;
   flex: 0 0 32%;
   width: 32%;
-  height: 94rem;
-  margin: 3rem;
-  padding: 22rem 7rem 15rem;
+  height: 105rem;
+  margin-right: 2%;
+  margin-bottom: @panelGap;
+  padding: 22rem 10rem 17rem;
   box-sizing: border-box;
   overflow: hidden;
   border: 1rem solid var(--menuBorderColor1);
@@ -659,6 +774,10 @@
 }
 
 .assetTile:hover { background-color: var(--menuHoverColor); }
+.assetTile:nth-child(3n) { margin-right: 0; }
+
+.assetTileDisabled .assetTileVisual,
+.assetTileDisabled .assetTileCount { opacity: 0.32; }
 
 .assetTileActive {
   border-color: @assets;
@@ -667,9 +786,9 @@
 
 .assetTileLabel {
   position: absolute;
-  top: 5rem;
-  left: 7rem;
-  right: 7rem;
+  top: 9rem;
+  left: 10rem;
+  right: 10rem;
   overflow: hidden;
   color: var(--menuText1Normal);
   font-size: var(--fontSizeXS);
@@ -705,8 +824,8 @@
 .assetTileCount {
   position: absolute;
   right: 6rem;
-  bottom: 4rem;
-  left: 6rem;
+  bottom: 8rem;
+  left: 10rem;
   overflow: hidden;
   color: var(--menuText2Normal);
   font-size: 9rem;
@@ -715,12 +834,41 @@
   white-space: nowrap;
 }
 
+.categoryCheck {
+  position: absolute;
+  right: 8rem;
+  bottom: 8rem;
+  z-index: 2;
+  width: 19rem;
+  height: 19rem;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1rem solid rgba(255, 255, 255, 0.32);
+  border-radius: 4rem;
+  color: #10220f;
+  background-color: rgba(5, 12, 20, 0.75);
+  font-family: var(--fontFamily);
+  font-size: 13rem;
+  font-weight: bold;
+  line-height: 17rem;
+  pointer-events: auto;
+}
+
+.categoryCheckActive {
+  border-color: @assets;
+  background-color: @assets;
+}
+
 .assetChooser {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  width: 49%;
+  height: 220rem;
   min-width: 0;
-  margin-left: 14rem;
+  min-height: 0;
   overflow: hidden;
   border: 1rem solid var(--menuBorderColor1);
   border-radius: 7rem;
@@ -753,8 +901,8 @@
   flex-wrap: wrap;
   align-content: flex-start;
   flex: 1 1 auto;
-  max-height: 168rem;
-  padding: 5rem;
+  min-height: 0;
+  padding: 8rem;
   overflow-y: auto;
   box-sizing: border-box;
   scrollbar-color: @assets rgba(255, 255, 255, 0.08);
@@ -778,8 +926,8 @@
   justify-content: center;
   flex: 0 0 20%;
   width: 20%;
-  height: 78rem;
-  padding: 5rem;
+  height: 84rem;
+  padding: 8rem;
   box-sizing: border-box;
   border: 2rem solid rgba(255, 255, 255, 0.06);
   color: var(--menuText1Normal);
@@ -861,26 +1009,8 @@
   font-size: var(--fontSizeXS);
 }
 
-.assetFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 48rem;
-  margin-top: 10rem;
-  padding-top: 9rem;
-  border-top: 1rem solid var(--menuBorderColor1);
-}
-
-.assetFooter .dangerButton { width: 170rem; min-width: 170rem; margin: 0; }
-
-.footerActions { display: flex; align-items: center; }
-.footerActions .primaryButton,
-.footerActions .secondaryButton { width: auto; min-width: 170rem; margin: 0 0 0 8rem; }
-
 @media (max-width: 1180px) {
   .toolSlot { flex-basis: 250rem; }
   .progressStep { padding-left: 5rem; padding-right: 5rem; }
   .progressNumber { margin-right: 3rem; }
-  .assetGrid { flex-basis: 450rem; }
-  .assetStageHeader > div:first-child { flex-basis: 450rem; }
 }

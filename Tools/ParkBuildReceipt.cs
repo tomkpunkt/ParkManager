@@ -33,6 +33,32 @@ namespace ParkManager.Tools
     }
 
     /// <summary>
+    /// Separately versioned furnishing controls added after the original
+    /// receipt. A missing component keeps the former 100%/all-enabled defaults.
+    /// </summary>
+    public struct ParkDecorationSettings : IComponentData, IQueryTypeParameter,
+                                           ISerializable
+    {
+        public int VegetationDensity;
+        public int FurnitureDensity;
+        public int EnabledMask;
+
+        public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
+        {
+            writer.Write(VegetationDensity);
+            writer.Write(FurnitureDensity);
+            writer.Write(EnabledMask);
+        }
+
+        public void Deserialize<TReader>(TReader reader) where TReader : IReader
+        {
+            reader.Read(out VegetationDensity);
+            reader.Read(out FurnitureDensity);
+            reader.Read(out EnabledMask);
+        }
+    }
+
+    /// <summary>
     /// Versioned recipe from which ParkManager can reopen the latest generated
     /// park after a save/load cycle. This is deliberately a separate component:
     /// CS2 serializes component instances consecutively, so extending an older
@@ -143,6 +169,12 @@ namespace ParkManager.Tools
             {
                 Type = _selectedPathType,
             });
+            EntityManager.AddComponentData(record, new ParkDecorationSettings
+            {
+                VegetationDensity = _vegetationDensity,
+                FurnitureDensity = _furnitureDensity,
+                EnabledMask = _decorationEnabledMask,
+            });
 
             var points = EntityManager.AddBuffer<ParkBuildPoint>(record);
             for (var i = 0; i < _worldPoints.Count; i++)
@@ -181,6 +213,13 @@ namespace ParkManager.Tools
             if (decorationsBuilt.HasValue)
                 receipt.DecorationsBuilt = decorationsBuilt.Value;
             EntityManager.SetComponentData(record, receipt);
+            if (EntityManager.HasComponent<ParkDecorationSettings>(record))
+                EntityManager.SetComponentData(record, new ParkDecorationSettings
+                {
+                    VegetationDensity = _vegetationDensity,
+                    FurnitureDensity = _furnitureDensity,
+                    EnabledMask = _decorationEnabledMask,
+                });
         }
 
         /// <summary>
@@ -224,12 +263,26 @@ namespace ParkManager.Tools
             _closed = true;
             _plannerMode = true;
             _fenceEnabled = receipt.FenceEnabled;
+            if (EntityManager.HasComponent<ParkDecorationSettings>(record))
+            {
+                var settings = EntityManager.GetComponentData<ParkDecorationSettings>(record);
+                _vegetationDensity = math.clamp(settings.VegetationDensity, 25, 200);
+                _furnitureDensity = math.clamp(settings.FurnitureDensity, 25, 200);
+                _decorationEnabledMask = settings.EnabledMask;
+            }
+            var fenceBit = 1 << ((int)ParkDecorationKind.Fence - 1);
+            if (_fenceEnabled) _decorationEnabledMask |= fenceBit;
+            else _decorationEnabledMask &= ~fenceBit;
             _selectedPathType = EntityManager.HasComponent<ParkPathStyle>(record)
                 ? EntityManager.GetComponentData<ParkPathStyle>(record).Type
                 : ParkPathType.Wide;
+            _selectedSiteKind = EntityManager.HasComponent<ProceduralSiteBuilder>(record)
+                ? EntityManager.GetComponentData<ProceduralSiteBuilder>(record).Kind
+                : ProceduralSiteKind.Park;
             _pedestrianPathPrefab = Entity.Null;
             ResolvePlacementPrefabs();
             _ui?.SetPathType((int)_selectedPathType);
+            _ui?.SetSiteType((int)_selectedSiteKind);
             _undo.Clear();
             _pointAxes.Clear();
             SyncSnapAxes();
@@ -260,17 +313,15 @@ namespace ParkManager.Tools
         }
 
         /// <summary>
-        /// Keeps the park restorer away from future PlazaBuilder records.
-        /// Missing identity means a legacy ParkManager record and is accepted
-        /// for backwards compatibility.
+        /// Accepts records owned by the procedural park/plaza workflow.
+        /// Missing identity means a legacy ParkManager record and is accepted.
         /// </summary>
         private bool IsParkBuilderRecord(Entity record)
         {
             if (!EntityManager.HasComponent<ProceduralSiteBuilder>(record))
                 return true;
             var builder = EntityManager.GetComponentData<ProceduralSiteBuilder>(record);
-            return builder.Version == ProceduralSiteBuilder.CurrentVersion
-                && builder.Kind == ProceduralSiteKind.Park;
+            return builder.Version == ProceduralSiteBuilder.CurrentVersion;
         }
     }
 }

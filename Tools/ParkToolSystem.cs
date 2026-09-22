@@ -52,10 +52,23 @@ namespace ParkManager.Tools
         private float _lastEdgeClickTime = -10f;
         private bool _plannerMode;
         private int _hoverEntrance = -1;
+        private ProceduralSiteKind _selectedSiteKind = ProceduralSiteKind.Park;
 
         public override string toolID => ToolId;
         public override PrefabBase GetPrefab() => null;
         public override bool TrySetPrefab(PrefabBase prefab) => false;
+
+        internal void SetSiteKind(int value)
+        {
+            if (HasBuiltPaths || PathBuildBusy || DecorationBuildBusy) return;
+            _selectedSiteKind = value == (int)ProceduralSiteKind.Plaza
+                ? ProceduralSiteKind.Plaza
+                : ProceduralSiteKind.Park;
+            _ui?.SetSiteType((int)_selectedSiteKind);
+            PublishState(_selectedSiteKind == ProceduralSiteKind.Plaza
+                ? "Plaza als Flächentyp ausgewählt."
+                : "Park als Flächentyp ausgewählt.");
+        }
 
         [Preserve]
         protected override void OnCreate()
@@ -674,7 +687,9 @@ namespace ParkManager.Tools
         }
 
         private void PublishState(string status)
-            => _ui?.SetPolygonState(_points.Count, _closed, IsValidPolygon(), status);
+            => _ui?.SetPolygonState(_points.Count,
+                _points.Count >= 3 ? (float)Math.Abs(SignedArea()) : 0f,
+                _closed, IsValidPolygon(), status);
 
         private JobHandle Render(JobHandle inputDeps)
         {

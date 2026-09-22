@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Build the selected park surface together with the pedestrian network in the
+  Surface step, keep it when furnishings are removed, and hide surface prefabs
+  without a dedicated UI preview from the picker.
+- Structure the workflow shell as one shared panel header, body and footer;
+  every step now renders its actions in the same bottom row.
+- Compact the outline workflow panel, replace the completed-park count with
+  the live polygon area in square metres, and leave more of the map visible
+  while drawing a new park.
+- Compact the path panel to the same height and add persisted park/plaza type,
+  path-width and thumbnail-based surface selection controls.
+- Give every furnishing category its own preview-tile enable checkbox, replace
+  the separate fence switch, align preview and chooser heights, and add full-
+  width vegetation and furniture-density controls that regenerate the plan.
+- Compact the completion panel to 210 UI units and remove the unrelated city-
+  wide park count from the active park workflow.
+
 - Add a narrow/wide footpath selector to the Paths workflow step. The chosen
   Vanilla pathway prefab controls its measured clearance and is persisted per
   park in a backward-compatible standalone style component.

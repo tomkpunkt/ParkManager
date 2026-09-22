@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AssetChoiceMap, assetCategories } from "../assetChoices";
-import { selectAsset, setVegetationDensity, toggleFence } from "../bindings";
+import { selectAsset, setFurnitureDensity, setVegetationDensity,
+  toggleDecorationCategory } from "../bindings";
 import { Texts } from "../i18n";
 import styles from "../panel.module.less";
 
@@ -8,15 +9,17 @@ type Props = {
   t: Texts;
   choices: AssetChoiceMap;
   busy: boolean;
-  fenceEnabled: boolean;
   vegetationDensity: number;
+  furnitureDensity: number;
+  enabledMask: number;
   decorationBuildPresent: boolean;
   decorationPlanReady: boolean;
 };
 
 /** Stable two-column catalog: category tiles left, scrollable assets right. */
-export const AssetCatalog = ({ t, choices, busy, fenceEnabled,
-  vegetationDensity, decorationBuildPresent, decorationPlanReady }: Props) => {
+export const AssetCatalog = ({ t, choices, busy, vegetationDensity,
+  furnitureDensity, enabledMask,
+  decorationBuildPresent, decorationPlanReady }: Props) => {
   const [openKey, setOpenKey] = useState("tree");
   const [failedIcons, setFailedIcons] = useState<Record<string, boolean>>({});
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -34,14 +37,14 @@ export const AssetCatalog = ({ t, choices, busy, fenceEnabled,
     const grid = gridRef.current;
     if (!grid) return;
     const tile = grid.querySelector("button");
-    grid.scrollTop += direction * (tile ? tile.getBoundingClientRect().height : 78) * 3;
+    grid.scrollTop += direction * (tile ? tile.getBoundingClientRect().height : 78) * 2;
   };
-  const updateDensity = (event: any) => {
+  const updateDensity = (event: any, setter: (value: number) => void) => {
     if (busy || decorationBuildPresent) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1,
       (event.clientX - rect.left) / Math.max(1, rect.width)));
-    setVegetationDensity(25 + Math.round(ratio * 7) * 25);
+    setter(25 + Math.round(ratio * 7) * 25);
   };
 
   return <>
@@ -51,15 +54,18 @@ export const AssetCatalog = ({ t, choices, busy, fenceEnabled,
         <h2>{t.assetsTitle}</h2>
         <p>{decorationPlanReady ? t.decorationPreview : t.assetsText}</p>
       </div>
-      <div className={styles.assetSettings}>
+    </div>
+    <div className={styles.densitySettings}>
       <div className={styles.densityControl}>
         <span>{t.plantDensity}</span>
         <button type="button" className={styles.densitySlider}
           disabled={busy || decorationBuildPresent} role="slider"
           aria-label={t.plantDensity} aria-valuemin={25} aria-valuemax={200}
-          aria-valuenow={vegetationDensity} onMouseDown={updateDensity}
+          aria-valuenow={vegetationDensity}
+          onMouseDown={(event) => updateDensity(event, setVegetationDensity)}
           onMouseMove={(event) => {
-            if ((event.buttons & 1) !== 0) updateDensity(event);
+            if ((event.buttons & 1) !== 0)
+              updateDensity(event, setVegetationDensity);
           }}>
           <span className={styles.densityTrack}>
             <span className={styles.densityFill}
@@ -68,17 +74,29 @@ export const AssetCatalog = ({ t, choices, busy, fenceEnabled,
               style={{ left: `${(vegetationDensity - 25) / 1.75}%` }} />
           </span>
         </button>
-        <strong>{vegetationDensity}%</strong>
+        <strong>{`${vegetationDensity}\u2060%`}</strong>
       </div>
-      <button className={`${styles.fenceToggle} ${
-        fenceEnabled ? styles.fenceToggleActive : ""}`}
-        disabled={busy} aria-pressed={fenceEnabled} onClick={toggleFence}>
-        <span className={styles.toggleTrack}><span className={styles.toggleKnob} /></span>
-        {fenceEnabled ? t.fenceOn : t.fenceOff}
-      </button>
+      <div className={styles.densityControl}>
+        <span>{t.furnitureDensity}</span>
+        <button type="button" className={styles.densitySlider}
+          disabled={busy || decorationBuildPresent} role="slider"
+          aria-label={t.furnitureDensity} aria-valuemin={25} aria-valuemax={200}
+          aria-valuenow={furnitureDensity}
+          onMouseDown={(event) => updateDensity(event, setFurnitureDensity)}
+          onMouseMove={(event) => {
+            if ((event.buttons & 1) !== 0)
+              updateDensity(event, setFurnitureDensity);
+          }}>
+          <span className={styles.densityTrack}>
+            <span className={styles.densityFill}
+              style={{ width: `${(furnitureDensity - 25) / 1.75}%` }} />
+            <span className={styles.densityThumb}
+              style={{ left: `${(furnitureDensity - 25) / 1.75}%` }} />
+          </span>
+        </button>
+        <strong>{`${furnitureDensity}\u2060%`}</strong>
       </div>
     </div>
-
     <div className={styles.assetWorkspace}>
       <div className={styles.assetGrid}>{assetCategories.map((item) => {
         const itemChoice = choices[item.key];
@@ -91,9 +109,10 @@ export const AssetCatalog = ({ t, choices, busy, fenceEnabled,
               && !failedIcons[candidate.icon]);
         const count = item.multi ? selectedMany.length : (selected ? 1 : 0);
         const label = t.categories[item.key];
-        return <button key={item.key}
-          className={`${styles.assetTile} ${openKey === item.key ? styles.assetTileActive : ""}`}
-          disabled={busy || !itemChoice || itemChoice.options.length === 0}
+        const enabled = (enabledMask & (1 << (item.kind - 1))) !== 0;
+        return <div key={item.key} role="button" tabIndex={0}
+          className={`${styles.assetTile} ${openKey === item.key ? styles.assetTileActive : ""} ${
+            enabled ? "" : styles.assetTileDisabled}`}
           title={t.openAssets(label)} onClick={() => setOpenKey(item.key)}>
           <span className={styles.assetTileLabel}>{label}</span>
           <span className={styles.assetTileVisual}>
@@ -104,7 +123,14 @@ export const AssetCatalog = ({ t, choices, busy, fenceEnabled,
           </span>
           <span className={styles.assetTileCount}>{count > 0
             ? (item.multi ? t.activeMany(count) : t.activeOne) : t.automatic}</span>
-        </button>;
+          <button type="button" className={`${styles.categoryCheck} ${
+            enabled ? styles.categoryCheckActive : ""}`}
+            disabled={busy} aria-pressed={enabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleDecorationCategory(item.kind);
+            }}>{enabled ? "✓" : ""}</button>
+        </div>;
       })}</div>
 
       <div className={styles.assetChooser}>

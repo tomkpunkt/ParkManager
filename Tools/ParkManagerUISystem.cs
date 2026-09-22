@@ -18,6 +18,7 @@ namespace ParkManager.Tools
         private ValueBinding<bool> _panelOpen;
         private ValueBinding<bool> _toolActive;
         private ValueBinding<int> _pointCount;
+        private ValueBinding<float> _polygonArea;
         private ValueBinding<bool> _polygonClosed;
         private ValueBinding<bool> _polygonValid;
         private ValueBinding<string> _status;
@@ -33,9 +34,12 @@ namespace ParkManager.Tools
         private ValueBinding<bool> _pathBuildPresent;
         private ValueBinding<string> _pathBuildSummary;
         private ValueBinding<int> _pathType;
+        private ValueBinding<int> _siteType;
         private ValueBinding<int> _snapMask;
         private ValueBinding<bool> _fenceEnabled;
         private ValueBinding<int> _vegetationDensity;
+        private ValueBinding<int> _furnitureDensity;
+        private ValueBinding<int> _decorationEnabledMask;
         private ValueBinding<bool> _decorationPlanReady;
         private ValueBinding<bool> _decorationBuildBusy;
         private ValueBinding<bool> _decorationBuildPresent;
@@ -54,6 +58,8 @@ namespace ParkManager.Tools
                 Group, "ToolActive", false));
             AddBinding(_pointCount = new ValueBinding<int>(
                 Group, "PointCount", 0));
+            AddBinding(_polygonArea = new ValueBinding<float>(
+                Group, "PolygonArea", 0f));
             AddBinding(_polygonClosed = new ValueBinding<bool>(
                 Group, "PolygonClosed", false));
             AddBinding(_polygonValid = new ValueBinding<bool>(
@@ -84,12 +90,18 @@ namespace ParkManager.Tools
                 Group, "PathBuildSummary", "Noch keine Testwege gebaut."));
             AddBinding(_pathType = new ValueBinding<int>(
                 Group, "PathType", (int)ParkPathType.Wide));
+            AddBinding(_siteType = new ValueBinding<int>(
+                Group, "SiteType", (int)ProceduralSiteKind.Park));
             AddBinding(_snapMask = new ValueBinding<int>(
                 Group, "SnapMask", (int)ParkToolSystem.SupportedSnapKinds));
             AddBinding(_fenceEnabled = new ValueBinding<bool>(
                 Group, "FenceEnabled", false));
             AddBinding(_vegetationDensity = new ValueBinding<int>(
                 Group, "VegetationDensity", 100));
+            AddBinding(_furnitureDensity = new ValueBinding<int>(
+                Group, "FurnitureDensity", 100));
+            AddBinding(_decorationEnabledMask = new ValueBinding<int>(
+                Group, "DecorationEnabledMask", 0x2f));
             AddBinding(_decorationPlanReady = new ValueBinding<bool>(
                 Group, "DecorationPlanReady", false));
             AddBinding(_decorationBuildBusy = new ValueBinding<bool>(
@@ -124,6 +136,9 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding<int>(Group, "SetPathType",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .SetPathType(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetSiteType",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetSiteKind(value)));
             AddBinding(new TriggerBinding(Group, "RemoveBuiltPaths",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .RemoveBuiltPaths()));
@@ -142,6 +157,12 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding<int>(Group, "SetVegetationDensity",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .SetVegetationDensity(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetFurnitureDensity",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetFurnitureDensity(value)));
+            AddBinding(new TriggerBinding<int>(Group, "ToggleDecorationCategory",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .ToggleDecorationCategory(value)));
             AddBinding(new TriggerBinding(Group, "BuildDecorations",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .BuildDecorations()));
@@ -181,10 +202,11 @@ namespace ParkManager.Tools
             _panelOpen?.Update(active);
         }
 
-        internal void SetPolygonState(int pointCount, bool closed, bool valid,
-            string status)
+        internal void SetPolygonState(int pointCount, float polygonArea,
+            bool closed, bool valid, string status)
         {
             _pointCount?.Update(pointCount);
+            _polygonArea?.Update(polygonArea);
             _polygonClosed?.Update(closed);
             _polygonValid?.Update(valid);
             _status?.Update(status);
@@ -218,14 +240,18 @@ namespace ParkManager.Tools
 
         internal void SetPathType(int type) => _pathType?.Update(type);
 
+        internal void SetSiteType(int type) => _siteType?.Update(type);
+
         internal void SetSnapMask(int mask) => _snapMask?.Update(mask);
 
         internal void SetDecorationState(bool fenceEnabled, int vegetationDensity,
-            bool planReady,
+            int furnitureDensity, int enabledMask, bool planReady,
             bool busy, bool present, string summary)
         {
             _fenceEnabled?.Update(fenceEnabled);
             _vegetationDensity?.Update(vegetationDensity);
+            _furnitureDensity?.Update(furnitureDensity);
+            _decorationEnabledMask?.Update(enabledMask);
             _decorationPlanReady?.Update(planReady);
             _decorationBuildBusy?.Update(busy);
             _decorationBuildPresent?.Update(present);

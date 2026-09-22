@@ -18,7 +18,8 @@ namespace ParkManager.Geometry
 
         internal static ParkDecorationPlan Generate(IReadOnlyList<float2> polygon,
             ParkPathPlan paths, IReadOnlyList<float2> entrances, int seed,
-            float builtPathWidth, bool fenceEnabled, int vegetationDensity)
+            float builtPathWidth, bool fenceEnabled, int vegetationDensity,
+            int furnitureDensity, int enabledMask)
         {
             var result = new List<ParkDecorationPlacement>();
             if (polygon == null || polygon.Count < 3)
@@ -34,6 +35,7 @@ namespace ParkManager.Geometry
             }
 
             var densityScale = math.clamp(vegetationDensity, 25, 200) / 100.0;
+            var furnitureScale = math.clamp(furnitureDensity, 25, 200) / 100f;
             var trees = math.clamp((int)Math.Round(area / 380.0 * densityScale),
                 1, MaximumTrees);
             var bushes = math.clamp((int)Math.Round(area / 230.0 * densityScale),
@@ -43,25 +45,33 @@ namespace ParkManager.Geometry
             // Furniture is planned first so both vegetation layers can reserve
             // its footprint. The random streams are independent, therefore the
             // ordering does not make either layer non-deterministic.
-            SampleFurniture(result, polygon, paths, entrances,
-                ParkDecorationKind.Bench, 34f, 0.75f,
-                builtPathWidth, MixSeed(seed, 0x7f4a7c15u));
-            SampleFurniture(result, polygon, paths, entrances,
-                ParkDecorationKind.Lamp, 23f, 0.45f,
-                builtPathWidth, MixSeed(seed, 0x94d049bbu));
-            SampleTrashBins(result, polygon, paths, entrances, builtPathWidth,
-                MixSeed(seed, 0xa54ff53au));
-            SampleVegetation(result, polygon, paths, entrances, min, max,
-                vegetationClusters, area, trees, ParkDecorationKind.Tree,
-                builtPathWidth, MixSeed(seed, 0x51f15e21u));
-            SampleVegetation(result, polygon, paths, entrances, min, max,
-                vegetationClusters, area, bushes, ParkDecorationKind.Bush,
-                builtPathWidth, MixSeed(seed, 0x9e3779b9u));
-            if (fenceEnabled)
+            if (IsEnabled(enabledMask, ParkDecorationKind.Bench))
+                SampleFurniture(result, polygon, paths, entrances,
+                    ParkDecorationKind.Bench, 34f / furnitureScale, 0.75f,
+                    builtPathWidth, MixSeed(seed, 0x7f4a7c15u));
+            if (IsEnabled(enabledMask, ParkDecorationKind.Lamp))
+                SampleFurniture(result, polygon, paths, entrances,
+                    ParkDecorationKind.Lamp, 23f / furnitureScale, 0.45f,
+                    builtPathWidth, MixSeed(seed, 0x94d049bbu));
+            if (IsEnabled(enabledMask, ParkDecorationKind.TrashBin))
+                SampleTrashBins(result, polygon, paths, entrances, builtPathWidth,
+                    furnitureScale, MixSeed(seed, 0xa54ff53au));
+            if (IsEnabled(enabledMask, ParkDecorationKind.Tree))
+                SampleVegetation(result, polygon, paths, entrances, min, max,
+                    vegetationClusters, area, trees, ParkDecorationKind.Tree,
+                    builtPathWidth, MixSeed(seed, 0x51f15e21u));
+            if (IsEnabled(enabledMask, ParkDecorationKind.Bush))
+                SampleVegetation(result, polygon, paths, entrances, min, max,
+                    vegetationClusters, area, bushes, ParkDecorationKind.Bush,
+                    builtPathWidth, MixSeed(seed, 0x9e3779b9u));
+            if (fenceEnabled && IsEnabled(enabledMask, ParkDecorationKind.Fence))
                 SampleFence(result, polygon, entrances, builtPathWidth,
                     MixSeed(seed, 0xd1b54a35u));
             return new ParkDecorationPlan(seed, fenceEnabled, result);
         }
+
+        private static bool IsEnabled(int mask, ParkDecorationKind kind)
+            => (mask & (1 << ((int)kind - 1))) != 0;
 
         private static void SampleVegetation(List<ParkDecorationPlacement> result,
             IReadOnlyList<float2> polygon, ParkPathPlan paths,
@@ -242,7 +252,8 @@ namespace ParkManager.Geometry
         private static void SampleTrashBins(
             List<ParkDecorationPlacement> result,
             IReadOnlyList<float2> polygon, ParkPathPlan paths,
-            IReadOnlyList<float2> entrances, float builtPathWidth, uint seed)
+            IReadOnlyList<float2> entrances, float builtPathWidth,
+            float densityScale, uint seed)
         {
             if (paths == null || paths.Edges.Count == 0) return;
             var random = new Unity.Mathematics.Random(seed == 0 ? 1u : seed);
@@ -258,8 +269,8 @@ namespace ParkManager.Geometry
             for (var i = 0; i < paths.Nodes.Count; i++)
                 if (paths.Nodes[i].Kind == ParkPathNodeKind.Gate
                     || incident[i].Count >= 3) importantNodes++;
-            var target = math.clamp(Math.Max(importantNodes,
-                (int)Math.Round(paths.TotalLength / 90f)), 1, 18);
+            var target = math.clamp((int)Math.Round(Math.Max(importantNodes,
+                paths.TotalLength / 90f) * densityScale), 1, 36);
             var placed = 0;
 
             // Gate nodes have first priority. Moving a few metres into the park

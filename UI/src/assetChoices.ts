@@ -10,12 +10,12 @@ export type AssetChoiceState = {
 export type AssetChoiceMap = Record<string, AssetChoiceState>;
 
 export const assetCategories = [
-  { key: "tree", payload: "Tree", multi: true },
-  { key: "bush", payload: "Bush", multi: true },
-  { key: "bench", payload: "Bench", multi: false },
-  { key: "lamp", payload: "Lamp", multi: false },
-  { key: "fence", payload: "Fence", multi: false },
-  { key: "trashbin", payload: "TrashBin", multi: false },
+  { key: "tree", payload: "Tree", multi: true, kind: 1 },
+  { key: "bush", payload: "Bush", multi: true, kind: 2 },
+  { key: "bench", payload: "Bench", multi: false, kind: 3 },
+  { key: "lamp", payload: "Lamp", multi: false, kind: 4 },
+  { key: "fence", payload: "Fence", multi: false, kind: 5 },
+  { key: "trashbin", payload: "TrashBin", multi: false, kind: 6 },
 ] as const;
 
 export type AssetCategory = typeof assetCategories[number];

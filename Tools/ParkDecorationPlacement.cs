@@ -69,6 +69,8 @@ namespace ParkManager.Tools
         private ParkDecorationPlan _decorationPlan;
         private bool _fenceEnabled;
         private int _vegetationDensity = 100;
+        private int _furnitureDensity = 100;
+        private int _decorationEnabledMask = 0x2f;
         private DecorationBuildPhase _decorationBuildPhase;
         private readonly List<PendingDecoration> _pendingDecorations
             = new List<PendingDecoration>();
@@ -159,6 +161,9 @@ namespace ParkManager.Tools
                 return;
             }
             _fenceEnabled = !_fenceEnabled;
+            var fenceBit = 1 << ((int)ParkDecorationKind.Fence - 1);
+            if (_fenceEnabled) _decorationEnabledMask |= fenceBit;
+            else _decorationEnabledMask &= ~fenceBit;
             if (_pathPlan != null)
             {
                 var seed = _decorationPlan?.Seed
@@ -192,6 +197,34 @@ namespace ParkManager.Tools
             else PublishDecorationState("Pflanzendichte geändert · Ausstattung noch nicht geplant.");
         }
 
+        internal void SetFurnitureDensity(int density)
+        {
+            if (PathBuildBusy || DecorationBuildBusy) return;
+            density = math.clamp(density, 25, 200);
+            if (_furnitureDensity == density) return;
+            if (HasBuiltDecorations)
+            {
+                PublishState("Zum Ändern der Ausstattungsdichte zuerst die Ausstattung entfernen.");
+                return;
+            }
+            _furnitureDensity = density;
+            if (_decorationPlan != null) GenerateDecorationPlan(_decorationPlan.Seed);
+            else PublishDecorationState("Ausstattungsdichte geändert · noch nicht geplant.");
+        }
+
+        internal void ToggleDecorationCategory(int kindValue)
+        {
+            if (PathBuildBusy || DecorationBuildBusy || HasBuiltDecorations) return;
+            if (kindValue < (int)ParkDecorationKind.Tree
+                || kindValue > (int)ParkDecorationKind.TrashBin) return;
+            var bit = 1 << (kindValue - 1);
+            _decorationEnabledMask ^= bit;
+            if (kindValue == (int)ParkDecorationKind.Fence)
+                _fenceEnabled = (_decorationEnabledMask & bit) != 0;
+            if (_decorationPlan != null) GenerateDecorationPlan(_decorationPlan.Seed);
+            else PublishDecorationState("Ausstattungsauswahl geändert · noch nicht geplant.");
+        }
+
         private void GenerateDecorationPlan(int seed)
         {
             if (!_plannerMode || _pathPlan == null || _pathPlan.Edges.Count == 0)
@@ -207,7 +240,8 @@ namespace ParkManager.Tools
             ResolvePlacementPrefabs();
             _decorationPlan = ParkDecorationPlanner.Generate(_points, _pathPlan,
                 gates, seed, _selectedPathWidth, _fenceEnabled,
-                _vegetationDensity);
+                _vegetationDensity, _furnitureDensity,
+                _decorationEnabledMask);
             FitFurnitureToSelectedAssets();
             UpdateBuildReceipt(_lastBuildRecord);
             var summary = DecorationPlanSummary(_decorationPlan);
@@ -250,18 +284,6 @@ namespace ParkManager.Tools
                 ClearDecorationMaterializationBaselines();
                 var nextElementId = NextElementId(_lastBuildRecord);
                 var heightData = _terrainSystem.GetHeightData(waitForPending: true);
-
-                if (_assetCatalog.TryGetSelected(ParkAssetCategory.Surface,
-                    out var surfacePrefab, out _))
-                {
-                    CapturePrefabBaseline(_permanentAreaQuery, surfacePrefab,
-                        _decorationAreaBaseline);
-                    if (CreateParkSurface(surfacePrefab, ref heightData))
-                    {
-                        _pendingSurfacePrefab = surfacePrefab;
-                        _pendingSurfaceElementId = nextElementId++;
-                    }
-                }
 
                 var random = new Unity.Mathematics.Random(
                     (uint)Math.Max(1, _decorationPlan.Seed));
@@ -1260,7 +1282,7 @@ namespace ParkManager.Tools
         }
 
         private static bool IsDecorationKind(ParkPathMemberKind kind)
-            => kind >= ParkPathMemberKind.ParkSurface;
+            => kind > ParkPathMemberKind.ParkSurface;
 
         private static ParkPathMemberKind ToMemberKind(ParkDecorationKind kind)
         {
@@ -1330,6 +1352,7 @@ namespace ParkManager.Tools
 
         private void PublishDecorationState(string summary)
             => _ui?.SetDecorationState(_fenceEnabled, _vegetationDensity,
+                _furnitureDensity, _decorationEnabledMask,
                 _decorationPlan != null, DecorationBuildBusy,
                 HasBuiltDecorations, summary);
     }

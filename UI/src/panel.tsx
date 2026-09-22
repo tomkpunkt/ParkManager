@@ -5,9 +5,9 @@ import {
   decorationBuildBusy$, decorationBuildPresent$, decorationPlanReady$,
   entranceCount$, fenceEnabled$, finishPark, generateDecorations, generatePaths,
   locale$, panelOpen$, parkCount$, pathBuildBusy$,
-  pathBuildPresent$, pathPlanReady$, plannerMode$, pointCount$,
+  pathBuildPresent$, pathPlanReady$, pathType$, plannerMode$, pointCount$,
   polygonClosed$, polygonValid$, removeBuiltDecorations, removeBuiltPaths,
-  togglePlannerMode, toggleTool, vegetationDensity$,
+  setPathType, togglePlannerMode, toggleTool, vegetationDensity$,
 } from "./bindings";
 import { parseAssetChoices } from "./assetChoices";
 import { AssetCatalog } from "./components/AssetCatalog";
@@ -34,6 +34,7 @@ export const ParkManagerPanel = () => {
   const pathPlanReady = useValue(pathPlanReady$);
   const pathBuildBusy = useValue(pathBuildBusy$);
   const pathBuildPresent = useValue(pathBuildPresent$);
+  const pathType = useValue(pathType$);
   const fenceEnabled = useValue(fenceEnabled$);
   const vegetationDensity = useValue(vegetationDensity$);
   const decorationPlanReady = useValue(decorationPlanReady$);
@@ -105,6 +106,17 @@ export const ParkManagerPanel = () => {
           <div className={styles.stateRow}>
             <StatePill success={entranceCount > 0}>{t.pathsGates(entranceCount)}</StatePill>
             {pathPlanReady ? <StatePill success>{t.steps[1]}</StatePill> : null}
+          </div>
+          <div className={styles.pathTypeControl}>
+            <span>{t.pathType}</span>
+            <div className={styles.segmentedControl}>
+              <button className={pathType === 0 ? styles.segmentActive : ""}
+                disabled={busy || pathBuildPresent}
+                onClick={() => setPathType(0)}>{t.pathNarrow}</button>
+              <button className={pathType === 1 ? styles.segmentActive : ""}
+                disabled={busy || pathBuildPresent}
+                onClick={() => setPathType(1)}>{t.pathWide}</button>
+            </div>
           </div>
         </div>
       </div>

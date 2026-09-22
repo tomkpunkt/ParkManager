@@ -267,6 +267,11 @@ namespace ParkManager.Tools
                     (uint)Math.Max(1, _decorationPlan.Seed));
                 var fenceRandomSeed = random.NextInt();
                 var fenceObjects = 0;
+                // Adjacent fence courses must receive bit-identical heights at
+                // their common polygon corner. Sampling every run separately
+                // can differ by a tiny amount and makes CS2 materialize two
+                // overlapping endpoint nodes instead of one shared node.
+                var fenceHeights = new Dictionary<(long, long), float>();
                 for (var i = 0; i < _decorationPlan.Placements.Count; i++)
                 {
                     var placement = _decorationPlan.Placements[i];
@@ -283,7 +288,8 @@ namespace ParkManager.Tools
                             }
                             if (_pendingFencePrefab == prefab
                                 && CreateFenceNetworkRun(placement, prefab,
-                                    ref heightData, fenceRandomSeed))
+                                    ref heightData, fenceHeights,
+                                    fenceRandomSeed))
                                 _expectedFenceCourses++;
                         }
                         else
@@ -643,7 +649,8 @@ namespace ParkManager.Tools
         /// adjacent prop entities.
         /// </summary>
         private bool CreateFenceNetworkRun(ParkDecorationPlacement run,
-            Entity prefab, ref TerrainHeightData heightData, int randomSeed)
+            Entity prefab, ref TerrainHeightData heightData,
+            Dictionary<(long, long), float> heights, int randomSeed)
         {
             if (run.Size < 0.5f) return false;
             var forward = new float2(math.sin(run.Rotation),
@@ -651,10 +658,8 @@ namespace ParkManager.Tools
             var half = forward * (run.Size * 0.5f);
             var start2 = run.Position - half;
             var end2 = run.Position + half;
-            var start = new float3(start2.x, 0f, start2.y);
-            var end = new float3(end2.x, 0f, end2.y);
-            start.y = TerrainUtils.SampleHeight(ref heightData, start);
-            end.y = TerrainUtils.SampleHeight(ref heightData, end);
+            var start = CanonicalFenceEndpoint(start2, ref heightData, heights);
+            var end = CanonicalFenceEndpoint(end2, ref heightData, heights);
             if (!math.all(math.isfinite(start)) || !math.all(math.isfinite(end)))
                 return false;
 
@@ -698,6 +703,29 @@ namespace ParkManager.Tools
                 },
             });
             return true;
+        }
+
+        /// <summary>
+        /// Samples each logical fence endpoint once. A 2.5 cm key absorbs the
+        /// harmless float reconstruction error introduced by storing a run as
+        /// centre, rotation and length while keeping distinct nearby gate ends
+        /// separate. Shared corners therefore become one Vanilla network node.
+        /// </summary>
+        private static float3 CanonicalFenceEndpoint(float2 point,
+            ref TerrainHeightData heightData,
+            Dictionary<(long, long), float> heights)
+        {
+            var key = ((long)math.round(point.x * 40f),
+                (long)math.round(point.y * 40f));
+            var canonical = new float3(key.Item1 / 40f, 0f,
+                key.Item2 / 40f);
+            if (!heights.TryGetValue(key, out var height))
+            {
+                height = TerrainUtils.SampleHeight(ref heightData, canonical);
+                heights[key] = height;
+            }
+            canonical.y = height;
+            return canonical;
         }
 
         private bool AddFenceDefinition(ParkDecorationPlacement run,

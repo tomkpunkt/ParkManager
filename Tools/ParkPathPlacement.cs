@@ -46,6 +46,7 @@ namespace ParkManager.Tools
         private bool _usesSurfaceFallback;
         private string _selectedPathPrefabName = string.Empty;
         private float _selectedPathWidth = 4f;
+        private ParkPathType _selectedPathType = ParkPathType.Wide;
         private Entity _pendingBuildRecord = Entity.Null;
         private Entity _lastBuildRecord = Entity.Null;
         private bool _lastBuildIsLegacy;
@@ -249,6 +250,34 @@ namespace ParkManager.Tools
             }
         }
 
+        internal void SetPathType(int value)
+        {
+            if (PathBuildBusy || HasBuiltPaths)
+            {
+                PublishState("Der Wegtyp kann nach dem Wegebau nicht mehr geändert werden.");
+                return;
+            }
+            var type = value == (int)ParkPathType.Narrow
+                ? ParkPathType.Narrow : ParkPathType.Wide;
+            if (_selectedPathType == type) return;
+            _selectedPathType = type;
+            _pedestrianPathPrefab = Entity.Null;
+            _selectedPathPrefabName = string.Empty;
+            ResolvePlacementPrefabs();
+            var decorationSeed = _decorationPlan?.Seed ?? 0;
+            if (decorationSeed != 0 && _pathPlan != null)
+                GenerateDecorationPlan(decorationSeed);
+            else
+                _decorationPlan = null;
+            _ui?.SetPathType((int)_selectedPathType);
+            PublishDecorationState(decorationSeed != 0
+                ? "Ausstattung an die neue Wegbreite angepasst."
+                : "Wegtyp geändert; Ausstattung noch nicht geplant.");
+            PublishState(type == ParkPathType.Narrow
+                ? "Schmale Fußwege ausgewählt."
+                : "Breite Fußwege ausgewählt.");
+        }
+
         internal void RemoveBuiltPaths()
         {
             if (PathBuildBusy || DecorationBuildBusy)
@@ -374,7 +403,8 @@ namespace ParkManager.Tools
                 return !_usesSurfaceFallback
                     || HasUsableAreaPrefab(_pavementSurfacePrefab);
 
-            _pedestrianPathPrefab = FindVisiblePedestrianPath(out var visibleName);
+            _pedestrianPathPrefab = FindVisiblePedestrianPath(_selectedPathType,
+                out var visibleName);
             if (_pedestrianPathPrefab != Entity.Null)
             {
                 _usesSurfaceFallback = false;
@@ -412,7 +442,8 @@ namespace ParkManager.Tools
                 _selectedPathWidth = width;
         }
 
-        private Entity FindVisiblePedestrianPath(out string selectedName)
+        private Entity FindVisiblePedestrianPath(ParkPathType pathType,
+            out string selectedName)
         {
             selectedName = string.Empty;
             var best = Entity.Null;
@@ -427,12 +458,18 @@ namespace ParkManager.Tools
                 var name = prefab.name ?? string.Empty;
                 var lower = name.ToLowerInvariant();
                 var score = 0;
-                // In the current Vanilla asset set PedestrianPathWide01 is the
-                // broad paved park path used by the established builder. The
-                // similarly named narrow variant renders as a cycle path, so
-                // names alone are not interchangeable here.
-                if (string.Equals(name, "PedestrianPathWide01",
+                var targetWidth = pathType == ParkPathType.Wide ? 8f : 4f;
+                if (pathType == ParkPathType.Wide
+                    && string.Equals(name, "PedestrianPathWide01",
                         StringComparison.OrdinalIgnoreCase)) score += 2000;
+                if (pathType == ParkPathType.Narrow
+                    && string.Equals(name, "Pavement Path",
+                        StringComparison.OrdinalIgnoreCase)) score += 2500;
+                // The bike patch added several PathwayData prefabs with widths
+                // close to the narrow footpath. Width scoring alone must never
+                // turn the park's pedestrian-path choice into a cycle path.
+                if (lower.Contains("bike") || lower.Contains("bicycle"))
+                    score -= 3000;
                 if (string.Equals(name, "Pedestrian Path",
                         StringComparison.OrdinalIgnoreCase)) score += 1000;
                 if (string.Equals(name, "Pedestrian Pathway",
@@ -454,15 +491,20 @@ namespace ParkManager.Tools
                     {
                         // Prefer the established broad park pavement as the
                         // geometric fallback when internal names change.
-                        score += 300 - (int)math.round(math.abs(width - 8f) * 30f);
-                        if (width < 5f) score -= 250;
+                        score += 300 - (int)math.round(
+                            math.abs(width - targetWidth) * 30f);
+                        if (pathType == ParkPathType.Wide && width < 5f)
+                            score -= 250;
+                        if (pathType == ParkPathType.Narrow && width > 6f)
+                            score -= 250;
                     }
                 }
 
                 var betterTie = score == bestScore
-                    && (math.abs(width - 8f) < math.abs(bestWidth - 8f) - 0.01f
-                        || math.abs(math.abs(width - 8f)
-                            - math.abs(bestWidth - 8f)) <= 0.01f
+                    && (math.abs(width - targetWidth)
+                            < math.abs(bestWidth - targetWidth) - 0.01f
+                        || math.abs(math.abs(width - targetWidth)
+                            - math.abs(bestWidth - targetWidth)) <= 0.01f
                         && string.Compare(name, selectedName,
                             StringComparison.OrdinalIgnoreCase) < 0);
                 if (score < bestScore || score == bestScore && !betterTie) continue;

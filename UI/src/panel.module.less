@@ -207,7 +207,7 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  padding: 20rem 40rem 10rem 18rem;
+  padding: 0 24rem 10rem 18rem;
   box-sizing: border-box;
 }
 
@@ -234,7 +234,7 @@
 .stageCopy {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -268,6 +268,54 @@
 .stateRow {
   display: flex;
   align-items: center;
+}
+
+.pathTypeControl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: flex-end;
+  width: 430rem;
+  margin-top: 14rem;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+}
+
+.pathTypeControl > span {
+  min-width: 92rem;
+  text-align: right;
+  margin-right: 10rem;
+}
+
+.segmentedControl {
+  display: flex;
+  overflow: hidden;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 5rem;
+}
+
+.segmentedControl button {
+  min-width: 128rem;
+  height: 32rem;
+  padding: 0 12rem;
+  border: 0;
+  color: var(--menuText2Normal);
+  background-color: rgba(10, 19, 31, 0.72);
+  font-size: var(--fontSizeXS);
+  white-space: nowrap;
+}
+
+.segmentedControl button + button {
+  border-left: 1rem solid var(--menuBorderColor1);
+}
+
+.segmentedControl button:hover:not(:disabled) {
+  background-color: rgba(83, 190, 239, 0.18);
+}
+
+.segmentedControl .segmentActive {
+  color: var(--menuText1Normal);
+  background-color: rgba(83, 190, 239, 0.34);
 }
 
 .statePill {
@@ -439,7 +487,7 @@
 
 .assetStageHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   min-height: 62rem;
 }
@@ -455,6 +503,7 @@
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
+  margin-top: 30rem;
   margin-left: 14rem;
 }
 
@@ -520,9 +569,10 @@
 }
 
 .densityControl strong {
-  min-width: 38rem;
+  min-width: 52rem;
   color: var(--menuText1Normal);
   text-align: right;
+  white-space: nowrap;
 }
 
 .densitySlider[disabled] { opacity: 0.35; pointer-events: none; }

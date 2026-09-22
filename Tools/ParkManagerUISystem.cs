@@ -32,6 +32,7 @@ namespace ParkManager.Tools
         private ValueBinding<bool> _pathBuildBusy;
         private ValueBinding<bool> _pathBuildPresent;
         private ValueBinding<string> _pathBuildSummary;
+        private ValueBinding<int> _pathType;
         private ValueBinding<int> _snapMask;
         private ValueBinding<bool> _fenceEnabled;
         private ValueBinding<int> _vegetationDensity;
@@ -81,6 +82,8 @@ namespace ParkManager.Tools
                 Group, "PathBuildPresent", false));
             AddBinding(_pathBuildSummary = new ValueBinding<string>(
                 Group, "PathBuildSummary", "Noch keine Testwege gebaut."));
+            AddBinding(_pathType = new ValueBinding<int>(
+                Group, "PathType", (int)ParkPathType.Wide));
             AddBinding(_snapMask = new ValueBinding<int>(
                 Group, "SnapMask", (int)ParkToolSystem.SupportedSnapKinds));
             AddBinding(_fenceEnabled = new ValueBinding<bool>(
@@ -118,6 +121,9 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding(Group, "BuildPaths",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .BuildPaths()));
+            AddBinding(new TriggerBinding<int>(Group, "SetPathType",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPathType(value)));
             AddBinding(new TriggerBinding(Group, "RemoveBuiltPaths",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .RemoveBuiltPaths()));
@@ -209,6 +215,8 @@ namespace ParkManager.Tools
             _pathBuildPresent?.Update(present);
             _pathBuildSummary?.Update(summary);
         }
+
+        internal void SetPathType(int type) => _pathType?.Update(type);
 
         internal void SetSnapMask(int mask) => _snapMask?.Update(mask);
 

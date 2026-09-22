@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- Add a narrow/wide footpath selector to the Paths workflow step. The chosen
+  Vanilla pathway prefab controls its measured clearance and is persisted per
+  park in a backward-compatible standalone style component.
+- Resolve the narrow choice explicitly to Vanilla's `Pavement Path` and reject
+  bike/bicycle pathway prefabs; align the compact path selector to the right of
+  the Paths step.
+- Anchor every workflow step number, title and description to the common
+  top-left content origin. Right-side settings now share the footer action
+  alignment, and three-digit plant-density percentages no longer wrap.
+- Recalculate an existing furnishing preview immediately, with its existing
+  deterministic seed, when the user switches between narrow and wide paths.
+
+- Fence boundary runs are again created as one native network edge per run, so
+  Move It's manipulation mode can expose the edge's two Bezier curve handles
+  instead of leaving a chain of short, straight fence pieces.
+- Bundle deletion now adopts the actual start and end nodes materialized by CS2
+  for every owned network edge before deletion, preventing invisible fence
+  endpoint nodes from surviving when a park is removed.
+- Fence courses share a quantized endpoint-height cache. Adjacent polygon sides
+  now pass bit-identical 3D corner positions to CS2 instead of intermittently
+  becoming separate overlapping nodes after independent terrain samples.
+
 ## 0.5.0 – development
 
 - Fix completed-park deletion leaving wide-path node meshes behind. Internal

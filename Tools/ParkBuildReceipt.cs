@@ -5,6 +5,33 @@ using Unity.Mathematics;
 
 namespace ParkManager.Tools
 {
+    public enum ParkPathType : byte
+    {
+        Narrow = 0,
+        Wide = 1,
+    }
+
+    /// <summary>
+    /// Separately versioned path-style choice. Keeping it outside the original
+    /// receipt preserves the binary layout of parks saved before path selection
+    /// was introduced; a missing component means the former wide default.
+    /// </summary>
+    public struct ParkPathStyle : IComponentData, IQueryTypeParameter,
+                                  ISerializable
+    {
+        public ParkPathType Type;
+
+        public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
+            => writer.Write((int)Type);
+
+        public void Deserialize<TReader>(TReader reader) where TReader : IReader
+        {
+            reader.Read(out int type);
+            Type = type == (int)ParkPathType.Narrow
+                ? ParkPathType.Narrow : ParkPathType.Wide;
+        }
+    }
+
     /// <summary>
     /// Versioned recipe from which ParkManager can reopen the latest generated
     /// park after a save/load cycle. This is deliberately a separate component:
@@ -112,6 +139,10 @@ namespace ParkManager.Tools
                 FenceEnabled = _fenceEnabled,
                 DecorationsBuilt = false,
             });
+            EntityManager.AddComponentData(record, new ParkPathStyle
+            {
+                Type = _selectedPathType,
+            });
 
             var points = EntityManager.AddBuffer<ParkBuildPoint>(record);
             for (var i = 0; i < _worldPoints.Count; i++)
@@ -193,6 +224,12 @@ namespace ParkManager.Tools
             _closed = true;
             _plannerMode = true;
             _fenceEnabled = receipt.FenceEnabled;
+            _selectedPathType = EntityManager.HasComponent<ParkPathStyle>(record)
+                ? EntityManager.GetComponentData<ParkPathStyle>(record).Type
+                : ParkPathType.Wide;
+            _pedestrianPathPrefab = Entity.Null;
+            ResolvePlacementPrefabs();
+            _ui?.SetPathType((int)_selectedPathType);
             _undo.Clear();
             _pointAxes.Clear();
             SyncSnapAxes();

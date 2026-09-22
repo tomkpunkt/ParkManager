@@ -121,6 +121,7 @@ namespace ParkManager.Tools
             using var requests = _requestQuery.ToEntityArray(Allocator.Temp);
             using var members = _memberQuery.ToEntityArray(Allocator.Temp);
             var deleted = 0;
+            var adoptedEndpoints = 0;
             for (var requestIndex = 0; requestIndex < requests.Length;
                  requestIndex++)
             {
@@ -129,16 +130,45 @@ namespace ParkManager.Tools
                      memberIndex++)
                 {
                     var entity = members[memberIndex];
-                    if (!EntityManager.HasComponent<Edge>(entity)
-                        || EntityManager.GetComponentData<ParkPathMember>(entity).Park
-                            != park) continue;
+                    if (!EntityManager.HasComponent<Edge>(entity)) continue;
+                    var member = EntityManager.GetComponentData<ParkPathMember>(
+                        entity);
+                    if (member.Park != park) continue;
+                    var edge = EntityManager.GetComponentData<Edge>(entity);
+                    adoptedEndpoints += AdoptEndpoint(edge.m_Start, member);
+                    adoptedEndpoints += AdoptEndpoint(edge.m_End, member);
                     EntityManager.AddComponent<Deleted>(entity);
                     deleted++;
                 }
             }
             if (deleted > 0)
                 Mod.Log.Info($"ParkManager bundle cleanup marked {deleted} network "
-                    + "edges in Modification2 before ReferencesSystem.");
+                    + "edges in Modification2 before ReferencesSystem; adopted "
+                    + $"{adoptedEndpoints} materialized endpoint nodes.");
+        }
+
+        /// <summary>
+        /// CS2 can materialize endpoint nodes that were not present in the
+        /// creation definitions. Attach those real endpoints to the same park
+        /// immediately before deleting their edge so the later cleanup pass
+        /// can remove them after ReferencesSystem has refreshed ConnectedEdge.
+        /// Existing membership is never overwritten, which protects nodes
+        /// shared with another completed park.
+        /// </summary>
+        private int AdoptEndpoint(Entity node, ParkPathMember edgeMember)
+        {
+            if (node == Entity.Null || !EntityManager.Exists(node)
+                || EntityManager.HasComponent<Deleted>(node)
+                || !EntityManager.HasComponent<Game.Net.Node>(node)
+                || EntityManager.HasComponent<ParkPathMember>(node)) return 0;
+
+            EntityManager.AddComponentData(node, new ParkPathMember
+            {
+                Park = edgeMember.Park,
+                ElementId = edgeMember.ElementId,
+                Kind = ParkPathMemberKind.Node,
+            });
+            return 1;
         }
 
         /// <summary>

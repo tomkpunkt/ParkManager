@@ -3,6 +3,8 @@ obj/
 Library/
 repos/
 papers/
+notes/
+specs/
 UI/node_modules/
 UI/build/
 .vs/

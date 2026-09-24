@@ -202,13 +202,15 @@ namespace ParkManager.Tools
 
         private void GenerateDecorationPlan(int seed)
         {
-            if (!_plannerMode || _pathPlan == null || _pathPlan.Edges.Count == 0)
+            if (!_plannerMode || _pathPlan == null
+                || _selectedSiteKind != ProceduralSiteKind.Plaza
+                    && _pathPlan.Edges.Count == 0)
             {
                 PublishState("Zuerst ein Wegenetz im Parkplaner erzeugen.");
                 return;
             }
             if (_selectedSiteKind == ProceduralSiteKind.Plaza
-                && (_plazaPlan == null || _plazaPlan.Furniture.Count == 0))
+                && _plazaPlan == null)
             {
                 _decorationPlan = null;
                 PublishDecorationState("Das Arrangement passt nicht auf diese Plaza-Fläche.");
@@ -219,7 +221,8 @@ namespace ParkManager.Tools
             // Resolve the real Vanilla net before furnishing. The procedural
             // edge width is only a design value and PedestrianPathWide01 is
             // considerably broader in the rendered game.
-            ResolvePlacementPrefabs();
+            if (_selectedSiteKind != ProceduralSiteKind.Plaza)
+                ResolvePlacementPrefabs();
             if (_selectedSiteKind == ProceduralSiteKind.Plaza)
                 _decorationPlan = GeneratePlazaDecorations(seed);
             else
@@ -258,7 +261,7 @@ namespace ParkManager.Tools
                 return;
             }
             if (_selectedSiteKind == ProceduralSiteKind.Plaza
-                && (_plazaPlan == null || _plazaPlan.Furniture.Count == 0))
+                && _plazaPlan == null)
             {
                 PublishState("Das Arrangement passt nicht auf diese Plaza-Fläche.");
                 return;
@@ -1336,7 +1339,8 @@ namespace ParkManager.Tools
         }
 
         private static bool IsDecorationKind(ParkPathMemberKind kind)
-            => kind > ParkPathMemberKind.ParkSurface;
+            => kind >= ParkPathMemberKind.Tree
+                && kind <= ParkPathMemberKind.PlazaCenter;
 
         private static ParkPathMemberKind ToMemberKind(ParkDecorationKind kind)
         {

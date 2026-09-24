@@ -23,8 +23,21 @@ for (var index = 0; index < count; index++)
     var mode = (PlazaLayoutMode)(index % 4);
     var width = 36f + index % 13 * 4f;
     var height = 30f + index % 9 * 5f;
-    var polygon = new List<float2> {
-        new(0, 0), new(width, 0), new(width, height), new(0, height) };
+    var polygon = (index % 5) switch {
+        0 => new List<float2> { new(0, 0), new(width, 0),
+            new(width, height), new(0, height) },
+        1 => new List<float2> { new(0, 0), new(width, 0),
+            new(width, height * .35f), new(width * .45f, height * .35f),
+            new(width * .45f, height), new(0, height) },
+        2 => new List<float2> { new(0, 0), new(width, 0),
+            new(width, height), new(width * .7f, height),
+            new(width * .7f, height * .4f), new(width * .3f, height * .4f),
+            new(width * .3f, height), new(0, height) },
+        3 => new List<float2> { new(0, 0), new(width, 0),
+            new(width * .85f, height), new(width * .15f, height) },
+        _ => new List<float2> { new(0, 0), new(width, 0),
+            new(width, height * .32f), new(0, height * .32f) },
+    };
     var gates = new List<float2> { new(width / 2, 0) };
     var radius = index % 7 == 0 ? 5.5f : 2.5f;
     var withCenter = mode != PlazaLayoutMode.Open;
@@ -39,7 +52,7 @@ for (var index = 0; index < count; index++)
     var plan = PlazaPlanner.Generate(polygon, gates, radius, mode, seed,
         withCenter, arrangement);
     var errors = new List<string>();
-    if (plan.RoutingSegments.Count == 0) errors.Add("No routing");
+    if (plan.RoutingSegments.Count != 0) errors.Add("Unexpected hidden network");
     if (plan.Furniture.Count > 64) errors.Add("Furniture limit exceeded");
     if (withCenter && PlazaPlanner.CanFitCenterpiece(polygon, radius)
         && plan.Centerpieces.Count == 0) errors.Add("Missing fitting center");
@@ -47,10 +60,8 @@ for (var index = 0; index < count; index++)
     {
         if (!math.all(math.isfinite(item.Position)) || !math.isfinite(item.Rotation))
             errors.Add("Non-finite furniture transform");
-        if (item.Position.x < item.FootprintRadius - 0.001f
-            || item.Position.x > width - item.FootprintRadius + 0.001f
-            || item.Position.y < item.FootprintRadius - 0.001f
-            || item.Position.y > height - item.FootprintRadius + 0.001f)
+        if (!Inside(item.Position)
+            || BoundaryDistance(item.Position) < item.FootprintRadius - 0.001f)
             errors.Add("Furniture footprint outside bounds");
         if (plan.Centerpieces.Any(center =>
             math.distance(center.Position, item.Position)
@@ -58,8 +69,8 @@ for (var index = 0; index < count; index++)
             errors.Add("Furniture overlaps center");
     }
     foreach (var center in plan.Centerpieces)
-        if (center.Position.x < center.Radius || center.Position.x > width - center.Radius
-            || center.Position.y < center.Radius || center.Position.y > height - center.Radius)
+        if (!Inside(center.Position)
+            || BoundaryDistance(center.Position) < center.Radius - 0.001f)
             errors.Add("Centerpiece footprint outside bounds");
     foreach (var route in plan.RoutingSegments)
         if (!Inside(route.A) || !Inside(route.B)) errors.Add("Routing endpoint outside bounds");
@@ -70,8 +81,27 @@ for (var index = 0; index < count; index++)
     if (errors.Count > 0) failures.Add($"Case {index}: {string.Join(", ", errors.Distinct())}");
     cases.Add(new { index, seed, mode = mode.ToString(), width, height, radius,
         errors = errors.Distinct().ToArray(), plan = Describe(plan) });
-    bool Inside(float2 p) => p.x >= -0.001f && p.x <= width + 0.001f
-        && p.y >= -0.001f && p.y <= height + 0.001f;
+    bool Inside(float2 p) {
+        var inside = false;
+        for (var i = 0; i < polygon.Count; i++) {
+            var a = polygon[i]; var b = polygon[(i + 1) % polygon.Count];
+            if ((a.y > p.y) == (b.y > p.y)) continue;
+            if (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)
+                inside = !inside;
+        }
+        return inside;
+    }
+    float BoundaryDistance(float2 p) {
+        var best = float.MaxValue;
+        for (var i = 0; i < polygon.Count; i++) {
+            var a = polygon[i]; var b = polygon[(i + 1) % polygon.Count];
+            var edge = b - a;
+            var t = math.clamp(math.dot(p - a, edge)
+                / math.max(0.0001f, math.lengthsq(edge)), 0f, 1f);
+            best = math.min(best, math.distance(p, a + edge * t));
+        }
+        return best;
+    }
 }
 var report = new { count, failed = failures.Count, failures, cases };
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);

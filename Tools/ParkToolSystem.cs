@@ -596,7 +596,9 @@ namespace ParkManager.Tools
 
         private void PublishPlannerState()
             => _ui?.SetPlannerState(_plannerMode, _entrances.Count,
-                _pathPlan != null && _pathPlan.Edges.Count > 0);
+                _selectedSiteKind == ProceduralSiteKind.Plaza
+                    ? _plazaPlan != null : _pathPlan != null
+                        && _pathPlan.Edges.Count > 0);
 
         private bool CanClose() => !_closed && _points.Count >= 3 && _hasHover
             && math.distancesq(_hover.xz, _points[0]) <= CloseDistance * CloseDistance;

@@ -146,11 +146,6 @@ namespace ParkManager.Tools
             var next = PlazaPlanner.Generate(_points, gates, radius,
                 _plazaLayout, _plazaPlan.Seed, _plazaPlan.HasCenterpiece,
                 arrangement);
-            if (next.RoutingSegments.Count == 0)
-            {
-                PublishState("Die Plaza-Geometrie konnte nicht neu berechnet werden.");
-                return;
-            }
             _plazaPlan = next;
             var decorationSeed = _decorationPlan?.Seed
                 ?? (unchecked(next.Seed * 1103515245 + 12345) & int.MaxValue);
@@ -222,17 +217,9 @@ namespace ParkManager.Tools
             if (useCenter && !_assetCatalog.TryGetFittingPlazaCenter(_points,
                 out centerPrefab, out centerName))
             {
-                PublishState("Kein verfügbares Mittelobjekt passt in die Plaza-Fläche.");
-                PublishPlannerState();
-                return;
+                useCenter = false;
+                centerName = "ohne Mittelobjekt (zu wenig Platz)";
             }
-            if (!ResolvePlacementPrefabs())
-            {
-                PublishState("Das unsichtbare Fußweg-Prefab ist nicht verfügbar.");
-                PublishPlannerState();
-                return;
-            }
-
             var centerRadius = useCenter
                 && _assetCatalog.TryGetPlanarRadius(centerPrefab,
                 out var measuredRadius)
@@ -249,46 +236,8 @@ namespace ParkManager.Tools
                 ?? new List<PlazaArrangementItem>();
             var plan = PlazaPlanner.Generate(_points, gates, centerRadius,
                 _plazaLayout, seed, useCenter, arrangement);
-            if (plan.RoutingSegments.Count == 0)
-            {
-                PublishState("Das Plaza-Layout passt nicht auf diese Fläche.");
-                PublishPlannerState();
-                return;
-            }
-            for (var gateIndex = 0; gateIndex < gates.Count; gateIndex++)
-            {
-                var connected = false;
-                for (var routeIndex = 0; routeIndex < plan.RoutingSegments.Count;
-                    routeIndex++)
-                {
-                    var route = plan.RoutingSegments[routeIndex];
-                    if (math.distancesq(gates[gateIndex], route.A) < 0.25f
-                        || math.distancesq(gates[gateIndex], route.B) < 0.25f)
-                    {
-                        connected = true;
-                        break;
-                    }
-                }
-                if (connected) continue;
-                PublishState("Ein Plaza-Zugang kann nicht mit dem Zentrum verbunden werden.");
-                PublishPlannerState();
-                return;
-            }
-            var segments = new List<float2>(plan.RoutingSegments.Count * 2);
-            for (var i = 0; i < plan.RoutingSegments.Count; i++)
-            {
-                segments.Add(plan.RoutingSegments[i].A);
-                segments.Add(plan.RoutingSegments[i].B);
-            }
-            var routing = ParkPathPlan.FromSegments(seed, segments, gates);
-            if (routing.Edges.Count == 0)
-            {
-                PublishState("Für diese Eingänge konnte kein Plaza-Routing erzeugt werden.");
-                PublishPlannerState();
-                return;
-            }
             _plazaPlan = plan;
-            _pathPlan = routing;
+            _pathPlan = ParkPathPlan.Empty(seed);
             GenerateDecorationPlan(unchecked(seed * 1103515245 + 12345)
                 & int.MaxValue);
             PublishState($"Plaza-Entwurf: {centerName}, "

@@ -33,6 +33,8 @@ namespace ParkManager.Tools
         Fence = 9,
         TrashBin = 10,
         PlazaCenter = 11,
+        NavigationArea = 12,
+        AccessMarker = 13,
     }
 
     /// <summary>

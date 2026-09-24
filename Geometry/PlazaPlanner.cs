@@ -5,8 +5,8 @@ using Unity.Mathematics;
 namespace ParkManager.Geometry
 {
     /// <summary>
-    /// Builds a symmetric plaza furnishing plan and a separate, invisible
-    /// pedestrian network. All positions use the local XZ planning plane.
+    /// Builds a symmetric plaza furnishing plan for a walkable polygon.
+    /// All positions use the local XZ planning plane.
     /// </summary>
     internal static class PlazaPlanner
     {
@@ -19,7 +19,7 @@ namespace ParkManager.Geometry
         private const int MaximumFurniture = 64;
 
         /// <summary>
-        /// Uses the same center and circulation clearance as Generate, so the
+        /// Uses the same centerpiece clearance as Generate, so the
         /// chooser never offers a centerpiece that cannot fit the polygon.
         /// </summary>
         internal static bool CanFitCenterpiece(IReadOnlyList<float2> polygon,
@@ -29,17 +29,14 @@ namespace ParkManager.Geometry
                 || !IsFinite(centerFootprintRadius)) return false;
             var radius = math.max(2f, centerFootprintRadius);
             if (!TryChooseCenter(polygon, radius, out var center)) return false;
-            var protectedRadius = radius + CenterSafetyMargin;
-            var circulationRadius = protectedRadius + CirculationOffset;
-            return TryBuildRing(polygon, center, protectedRadius,
-                ref circulationRadius, out _);
+            return DistanceToBoundarySquared(center, polygon)
+                >= (radius + CenterSafetyMargin) * (radius + CenterSafetyMargin);
         }
 
         /// <summary>
         /// Generates a deterministic plaza inside polygon. Furniture is added
         /// only in opposite pairs whose two footprints fit. The returned
-        /// routing segments connect entrances to an inner circulation ring;
-        /// callers must keep those segments invisible.
+        /// Access is supplied by the navigation area, not a hidden path ring.
         /// </summary>
         internal static PlazaPlan Generate(IReadOnlyList<float2> polygon,
             IReadOnlyList<float2> entrances, float centerFootprintRadius,
@@ -57,7 +54,14 @@ namespace ParkManager.Geometry
                 ? math.max(0f, centerFootprintRadius) : 0f;
             float2 center;
             if (!TryChooseCenter(polygon, radius, out center))
-                return new PlazaPlan(seed, mode, centerpieces, furniture, routes);
+            {
+                // The selected centerpiece is optional. Keep the polygon
+                // buildable when it does not fit a narrow/concave footprint.
+                radius = 0f;
+                if (!TryChooseCenter(polygon, 0f, out center))
+                    return new PlazaPlan(seed, mode, centerpieces, furniture,
+                        routes);
+            }
 
             var protectedRadius = radius > 0f
                 ? math.max(2f, radius) + CenterSafetyMargin : 0.75f;
@@ -88,27 +92,21 @@ namespace ParkManager.Geometry
                         Radius = radius,
                     });
             }
-            if (!BuildHiddenRoutingNetwork(routes, polygon, entrances,
-                    center, protectedRadius, centerpieces, majorAxis))
+            if (centerpieces.Count > 1)
             {
-                // Long-axis repetition is optional: fall back to one center
-                // if the capsule does not fit an irregular outline.
-                if (centerpieces.Count > 1)
+                var allFit = true;
+                for (var i = 0; i < centerpieces.Count; i++)
                 {
-                    centerpieces.RemoveRange(1, centerpieces.Count - 1);
-                    centerpieces[0] = new PlazaCenterpiecePlacement
-                    {
-                        Kind = SelectCenterpiece(seed), Position = center,
-                        Radius = radius,
-                    };
-                    routes.Clear();
-                    BuildHiddenRoutingNetwork(routes, polygon, entrances,
-                        center, protectedRadius, centerpieces, majorAxis);
+                    var point = centerpieces[i].Position;
+                    if (PointInsideOrBoundary(point, polygon)
+                        && DistanceToBoundarySquared(point, polygon)
+                            >= (radius + CenterSafetyMargin)
+                            * (radius + CenterSafetyMargin)) continue;
+                    allFit = false;
+                    break;
                 }
+                if (!allFit) centerpieces.RemoveRange(1, centerpieces.Count - 1);
             }
-            if (routes.Count == 0)
-                return new PlazaPlan(seed, mode, centerpieces, furniture,
-                    routes);
             var candidates = mode == PlazaLayoutMode.Boundary
                 || mode == PlazaLayoutMode.Open || centerpieces.Count > 1
                 ? BuildBoundaryFurnitureCandidates(center, protectedRadius,
@@ -120,6 +118,29 @@ namespace ParkManager.Geometry
                     TryAddArrangement(furniture, candidates[i], arrangement,
                         center, centerpieces, polygon,
                         entrances, routes, i + 1);
+            // A symmetry pair may miss an irregular or narrow polygon. Try
+            // progressively smaller rings before accepting an unfurnished
+            // plaza; navigation must never depend on furniture placement.
+            if (furniture.Count == 0 && arrangement != null
+                && arrangement.Count > 0)
+                for (var step = 0; step < 5 && furniture.Count == 0; step++)
+                {
+                    var distance = protectedRadius + 4f - step * 0.65f;
+                    for (var angleIndex = 0; angleIndex < 12
+                        && furniture.Count == 0; angleIndex++)
+                    {
+                        var angle = angleIndex * math.PI / 12f;
+                        var direction = new float2(math.cos(angle), math.sin(angle));
+                        var fallback = new FurniturePairCandidate
+                        {
+                            Position = center + direction * distance,
+                            Rotation = math.atan2(-direction.x, -direction.y),
+                        };
+                        TryAddArrangement(furniture, fallback, arrangement,
+                            center, centerpieces, polygon, entrances, routes,
+                            100 + step * 12 + angleIndex);
+                    }
+                }
             return new PlazaPlan(seed, mode, centerpieces, furniture, routes);
         }
 
@@ -191,8 +212,7 @@ namespace ParkManager.Geometry
             var phase = mode == PlazaLayoutMode.Axial
                 ? random.NextInt(0, 4) * math.PI * 0.25f
                 : random.NextFloat(0f, math.PI / benchPairs);
-            // Keep the first furniture ring close to the centerpiece while
-            // leaving the hidden pedestrian circulation ring unobstructed.
+            // Keep the first furniture ring close to the centerpiece.
             var innerRadius = protectedRadius + random.NextFloat(3.8f, 5.2f);
             var stretch = mode == PlazaLayoutMode.Axial
                 ? random.NextFloat(1f, 1.12f) : 1f;
@@ -312,8 +332,8 @@ namespace ParkManager.Geometry
             }
 
             {
-                // Physical props must not sit on the invisible walking net.
-                // Keep a smaller margin for seats and bins than for planting.
+                // Kept for compatibility with older routing-only plans. New
+                // plazas pass an empty list because their whole area is walkable.
                 var routeClearance = footprintRadius
                     + (kind == PlazaFurnitureKind.Tree
                         || kind == PlazaFurnitureKind.Bush ? 0.75f : 0.15f);

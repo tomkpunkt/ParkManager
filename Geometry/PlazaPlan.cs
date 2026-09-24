@@ -30,8 +30,8 @@ namespace ParkManager.Geometry
     }
 
     /// <summary>
-    /// A straight segment in the plaza's hidden pedestrian routing network.
-    /// These are routing data only and should not be rendered as paths.
+    /// Legacy routing segment. New plazas leave this collection empty and use
+    /// a pedestrian navigation area instead.
     /// </summary>
     internal struct PlazaRoutingSegment
     {
@@ -72,8 +72,8 @@ namespace ParkManager.Geometry
     }
 
     /// <summary>
-    /// Shared result for plaza preview and construction. Routing remains
-    /// invisible; only the centerpiece and furniture placements are visible.
+    /// Shared result for plaza preview and construction. The whole polygon is
+    /// walkable; only the centerpiece and furniture placements are visible.
     /// </summary>
     internal sealed class PlazaPlan
     {

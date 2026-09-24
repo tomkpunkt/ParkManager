@@ -13,8 +13,6 @@ namespace ParkManager.Tools
     /// </summary>
     public sealed partial class ParkToolSystem
     {
-        private bool _freshDraftActive;
-
         /// <summary>
         /// Detaches the completed park from the editor without deleting any of
         /// its Vanilla entities, then prepares an empty outline for the next
@@ -33,7 +31,6 @@ namespace ParkManager.Tools
                 return;
             }
 
-            UpdateBuildReceipt(_lastBuildRecord, HasBuiltDecorations);
             var finishedRecord = _lastBuildRecord;
             if (EntityManager.HasComponent<ParkCompletedBundle>(finishedRecord))
                 EntityManager.SetComponentData(finishedRecord,
@@ -47,16 +44,11 @@ namespace ParkManager.Tools
                     Version = ParkCompletedBundle.CurrentVersion,
                 });
             _lastBuildRecord = Entity.Null;
-            _lastBuildIsLegacy = false;
-            _restoredReceiptRecord = Entity.Null;
-            _freshDraftActive = true;
             ResetWorkspaceDraft();
             PublishState("Park fertiggestellt. Zeichne den Umriss für den nächsten Park.");
             PublishPathBuildState("Neuer Park · noch keine Wege gebaut.");
             PublishDecorationState("Neuer Park · noch keine Ausstattung geplant.");
-            PublishWorkspaceState();
-            Mod.Log.Info($"ParkManager finalized park {finishedRecord}; "
-                + $"{CountBuiltParks()} park records now coexist in the city.");
+            Mod.Log.Info($"ParkManager finalized park {finishedRecord}.");
         }
 
         /// <summary>Clears transient editor data, never persisted park entities.</summary>
@@ -68,7 +60,10 @@ namespace ParkManager.Tools
             _undo.Clear();
             _entrances.Clear();
             _pathPreview.Clear();
+            _buildIssues.Clear();
+            _preflightWarning = null;
             _pathPlan = null;
+            _plazaPlan = null;
             _decorationPlan = null;
             _pendingDecorations.Clear();
             _closed = false;
@@ -82,81 +77,11 @@ namespace ParkManager.Tools
             PublishPlannerState();
         }
 
-        private int CountBuiltParks()
-        {
-            var count = 0;
-            using (var records = _parkBuildQuery.ToEntityArray(Allocator.TempJob))
-                for (var i = 0; i < records.Length; i++)
-                    if (IsParkBuilderRecord(records[i])) count++;
-            using (var records = _legacyBuildQuery.ToEntityArray(Allocator.TempJob))
-                count += records.Length;
-            return count;
-        }
-
-        private void PublishWorkspaceState()
-            => _ui?.SetWorkspaceState(CountBuiltParks());
-
-        private bool RecoverPathBuildRecord()
-        {
-            if (_freshDraftActive) return false;
-            if (HasBuiltPaths)
-            {
-                RestoreBuildReceipt(_lastBuildRecord);
-                PublishWorkspaceState();
-                return true;
-            }
-            _lastBuildRecord = Entity.Null;
-            _lastBuildIsLegacy = false;
-
-            using (var records = _parkBuildQuery.ToEntityArray(Allocator.TempJob))
-            {
-                for (var i = 0; i < records.Length; i++)
-                {
-                    if (!IsParkBuilderRecord(records[i])) continue;
-                    if (EntityManager.HasComponent<ParkCompletedBundle>(records[i]))
-                        continue;
-                    if (_lastBuildRecord == Entity.Null
-                        || records[i].Index > _lastBuildRecord.Index)
-                        _lastBuildRecord = records[i];
-                }
-            }
-
-            if (_lastBuildRecord != Entity.Null)
-            {
-                var marker = EntityManager.GetComponentData<ParkPathBuildMarker>(
-                    _lastBuildRecord);
-                var state = EntityManager.GetComponentData<ParkEditableBuildState>(
-                    _lastBuildRecord);
-                RestoreBuildReceipt(_lastBuildRecord);
-                PublishPathBuildState(state.Modified
-                    ? $"Manuell bearbeitet · {CountMembers(_lastBuildRecord)} von "
-                        + $"{state.MemberCount} Elementen · Seed {marker.Seed}"
-                    : $"Gebaut · frei editierbar · {state.MemberCount} Elemente · "
-                        + $"Seed {marker.Seed}");
-                PublishWorkspaceState();
-                return true;
-            }
-
-            using (var records = _legacyBuildQuery.ToEntityArray(Allocator.TempJob))
-            {
-                for (var i = 0; i < records.Length; i++)
-                    if (_lastBuildRecord == Entity.Null
-                        || records[i].Index > _lastBuildRecord.Index)
-                        _lastBuildRecord = records[i];
-            }
-            PublishWorkspaceState();
-            if (_lastBuildRecord == Entity.Null) return false;
-            _lastBuildIsLegacy = true;
-            PublishPathBuildState("Alter gebundener Testbau erkannt · vor Neubau entfernen");
-            return true;
-        }
-
         private void MonitorExternalPathEdits(bool force = false)
         {
             if (PathBuildBusy || DecorationBuildBusy) return;
-            if (!HasBuiltPaths && !RecoverPathBuildRecord()) return;
-            if (_lastBuildIsLegacy
-                || !EntityManager.HasComponent<ParkEditableBuildState>(
+            if (!HasBuiltPaths) return;
+            if (!EntityManager.HasComponent<ParkEditableBuildState>(
                     _lastBuildRecord)) return;
             var frame = UnityEngine.Time.frameCount;
             if (!force && frame - _lastModificationCheckFrame

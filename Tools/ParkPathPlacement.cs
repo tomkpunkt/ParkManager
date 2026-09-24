@@ -39,9 +39,6 @@ namespace ParkManager.Tools
         private EntityQuery _permanentPathQuery;
         private EntityQuery _permanentAreaQuery;
         private EntityQuery _pathMemberQuery;
-        private EntityQuery _parkBuildQuery;
-        private EntityQuery _legacyBuildQuery;
-        private EntityQuery _legacyOwnedPathPartsQuery;
         private Entity _pedestrianPathPrefab = Entity.Null;
         private Entity _pavementSurfacePrefab = Entity.Null;
         private Entity _parkSurfacePrefab = Entity.Null;
@@ -51,7 +48,6 @@ namespace ParkManager.Tools
         private ParkPathType _selectedPathType = ParkPathType.Wide;
         private Entity _pendingBuildRecord = Entity.Null;
         private Entity _lastBuildRecord = Entity.Null;
-        private bool _lastBuildIsLegacy;
         private PathBuildPhase _pathBuildPhase;
         private int _pathBuildStartedFrame;
         private int _pathApplyFrame;
@@ -153,34 +149,6 @@ namespace ParkManager.Tools
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
-            _parkBuildQuery = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[]
-                {
-                    ComponentType.ReadOnly<ParkPathBuildMarker>(),
-                    ComponentType.ReadOnly<ParkEditableBuildState>(),
-                },
-                None = new[]
-                {
-                    ComponentType.ReadOnly<Deleted>(),
-                    ComponentType.ReadOnly<Temp>(),
-                },
-            });
-            _legacyBuildQuery = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<ParkPathBuildMarker>() },
-                None = new[]
-                {
-                    ComponentType.ReadOnly<ParkEditableBuildState>(),
-                    ComponentType.ReadOnly<Deleted>(),
-                    ComponentType.ReadOnly<Temp>(),
-                },
-            });
-            _legacyOwnedPathPartsQuery = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<Owner>() },
-                None = new[] { ComponentType.ReadOnly<Deleted>() },
-            });
         }
 
         internal void BuildPaths()
@@ -211,12 +179,15 @@ namespace ParkManager.Tools
                 PublishState("Kein sichtbarer Vanilla-Untergrund verfügbar.");
                 return;
             }
-
             try
             {
-                // A failed build must leave this draft active instead of
-                // silently selecting one of the already completed parks.
-                _freshDraftActive = true;
+                if (!ValidateBuildSite(out var siteProblem))
+                {
+                    PublishState(siteProblem);
+                    PublishPathBuildState(siteProblem);
+                    return;
+                }
+                _buildDefinitions.Clear();
                 CaptureMaterializationBaseline();
                 _pendingBuildRecord = CreatePathBuildRecord(_pathPlan.Seed);
                 var heightData = _terrainSystem.GetHeightData(waitForPending: true);
@@ -268,6 +239,7 @@ namespace ParkManager.Tools
 
         internal void SetPathType(int value)
         {
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza) return;
             if (PathBuildBusy || HasBuiltPaths)
             {
                 PublishState("Der Wegtyp kann nach dem Wegebau nicht mehr geändert werden.");
@@ -308,32 +280,12 @@ namespace ParkManager.Tools
                 return;
             }
 
-            var removed = 0;
-            if (_lastBuildIsLegacy)
-            {
-                using var entities = _legacyOwnedPathPartsQuery.ToEntityArray(Allocator.TempJob);
-                for (var i = 0; i < entities.Length; i++)
-                {
-                    var entity = entities[i];
-                    if (EntityManager.GetComponentData<Owner>(entity).m_Owner
-                        != _lastBuildRecord) continue;
-                    EntityManager.AddComponent<Deleted>(entity);
-                    removed++;
-                }
-            }
-            else
-            {
-                removed = DeleteEditableMembers(_lastBuildRecord);
-            }
+            var removed = DeleteEditableMembers(_lastBuildRecord);
             EntityManager.AddComponent<Deleted>(_lastBuildRecord);
             _lastBuildRecord = Entity.Null;
-            _lastBuildIsLegacy = false;
-            _restoredReceiptRecord = Entity.Null;
-            _freshDraftActive = true;
             DecorationBuildWasRemoved();
             PublishState($"Gebauter Park entfernt ({removed} Teile).");
             PublishPathBuildState("Noch kein Park gebaut.");
-            PublishWorkspaceState();
         }
 
         private bool ProcessPathPlacement()
@@ -417,7 +369,6 @@ namespace ParkManager.Tools
                 case PathBuildPhase.ClearRequested:
                     applyMode = ApplyMode.Clear;
                     _pathBuildPhase = PathBuildPhase.Idle;
-                    PublishPathBuildState("Wegebau wurde verworfen.");
                     return true;
                 default:
                     return false;
@@ -426,6 +377,17 @@ namespace ParkManager.Tools
 
         private bool ResolvePlacementPrefabs()
         {
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza)
+            {
+                if (!HasNamedBuiltin(_pedestrianPathPrefab,
+                    FallbackPedestrianPathPrefabName))
+                    _pedestrianPathPrefab = FindNamedBuiltin(_pathPrefabQuery,
+                        FallbackPedestrianPathPrefabName, false);
+                _usesSurfaceFallback = false;
+                _selectedPathPrefabName = FallbackPedestrianPathPrefabName;
+                _selectedPathWidth = 0f;
+                return _pedestrianPathPrefab != Entity.Null;
+            }
             if (HasBuiltinEntity(_pedestrianPathPrefab))
                 return !_usesSurfaceFallback
                     || HasUsableAreaPrefab(_pavementSurfacePrefab);
@@ -592,16 +554,10 @@ namespace ParkManager.Tools
                 m_Prefab = _pedestrianPathPrefab,
             });
             EntityManager.AddComponentData(record, new ParkPathBuildMarker { Seed = seed });
-            EntityManager.AddComponentData(record, new ProceduralSiteBuilder
-            {
-                Version = ProceduralSiteBuilder.CurrentVersion,
-                Kind = _selectedSiteKind,
-            });
             EntityManager.AddComponentData(record, new ParkEditableBuildState
             {
                 Version = ParkEditableBuildState.CurrentVersion,
             });
-            WriteBuildReceipt(record, seed);
             return record;
         }
 
@@ -625,7 +581,7 @@ namespace ParkManager.Tools
             var a = curve.a;
             var b = curve.d;
             if (length < 1f) return false;
-            var definition = EntityManager.CreateEntity();
+            var definition = CreateBuildDefinition();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
                 m_Prefab = _pedestrianPathPrefab,
@@ -672,7 +628,7 @@ namespace ParkManager.Tools
             if (length < 1f) return false;
             var normal = new float2(-delta.y, delta.x) / length * (width * 0.5f);
             var polygon = new[] { a - normal, b - normal, b + normal, a + normal };
-            var definition = EntityManager.CreateEntity();
+            var definition = CreateBuildDefinition();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
                 m_Prefab = _pavementSurfacePrefab,
@@ -980,23 +936,22 @@ namespace ParkManager.Tools
             state.GeometryHash = geometryHash;
             state.Modified = false;
             EntityManager.SetComponentData(_pendingBuildRecord, state);
-            UpdateBuildReceipt(_pendingBuildRecord, false);
 
             _lastBuildRecord = _pendingBuildRecord;
             _pendingBuildRecord = Entity.Null;
+            _buildDefinitions.Clear();
             _pathEntityBaseline.Clear();
             _areaEntityBaseline.Clear();
             _parkSurfaceAreaBaseline.Clear();
-            _lastBuildIsLegacy = false;
-            _freshDraftActive = false;
             _pathBuildPhase = PathBuildPhase.Idle;
+            _preflightWarning = null;
+            _buildIssues.Clear();
             _lastModificationCheckFrame = UnityEngine.Time.frameCount;
             PublishState($"Testwege gebaut: {_expectedPathCourses} verbundene "
                 + $"Segmente mit '{_selectedPathPrefabName}'. Einzelne Knoten und "
                 + "Segmente können jetzt extern bearbeitet werden.");
             PublishPathBuildState($"Gebaut · frei editierbar · {memberCount} Elemente · "
                 + $"{_selectedPathPrefabName} · Seed {_pathPlan?.Seed ?? 0}");
-            PublishWorkspaceState();
             Mod.Log.Info($"ParkManager built {_expectedPathCourses} pedestrian courses and "
                 + $"{_expectedPathAreas} surfaces as {memberCount} top-level editable entities.");
         }
@@ -1042,18 +997,21 @@ namespace ParkManager.Tools
 
         private void AbortPathBuild(string reason)
         {
-            Mod.Log.Warn("ParkManager path build aborted: " + reason);
+            _preflightWarning = null;
+            Mod.Log.Warn($"ParkManager path build aborted in {_pathBuildPhase} "
+                + $"(seed {_pathPlan?.Seed ?? 0}, expected {_expectedPathCourses} "
+                + $"courses/{_expectedPathAreas} path areas): {reason}");
             TagMaterializedPathEntities(_pendingBuildRecord,
                 out var materializedEdges, out var materializedNodes,
                 out var materializedAreas, out var materializedParkSurfaces);
             LogPermanentPathDiagnostics(_pendingBuildRecord);
             DeleteEditableMembers(_pendingBuildRecord);
+            var discardedDefinitions = DiscardBuildDefinitions();
             if (_pendingBuildRecord != Entity.Null
                 && EntityManager.Exists(_pendingBuildRecord)
                 && !EntityManager.HasComponent<Deleted>(_pendingBuildRecord))
                 EntityManager.AddComponent<Deleted>(_pendingBuildRecord);
             _pendingBuildRecord = Entity.Null;
-            _freshDraftActive = true;
             _pathEntityBaseline.Clear();
             _areaEntityBaseline.Clear();
             _parkSurfaceAreaBaseline.Clear();
@@ -1061,15 +1019,16 @@ namespace ParkManager.Tools
             _pathApplyFrame = UnityEngine.Time.frameCount;
             _pathBuildPhase = PathBuildPhase.ClearRequested;
             PublishState(reason);
-            PublishPathBuildState("Wegebau wird verworfen …");
-            PublishWorkspaceState();
+            PublishPathBuildState("Fehler: " + reason);
             Mod.Log.Info($"ParkManager abort cleanup captured "
                 + $"{materializedEdges} permanent edges, {materializedNodes} "
                 + $"permanent nodes, {materializedAreas} path surfaces and "
-                + $"{materializedParkSurfaces} park surfaces.");
+                + $"{materializedParkSurfaces} park surfaces; discarded "
+                + $"{discardedDefinitions} definitions.");
         }
 
         private void PublishPathBuildState(string summary)
-            => _ui?.SetPathBuildState(PathBuildBusy, HasBuiltPaths, summary);
+            => _ui?.SetPathBuildState(PathBuildBusy, HasBuiltPaths,
+                _preflightWarning ?? summary);
     }
 }

@@ -15,6 +15,7 @@ namespace ParkManager.Geometry
         private const int MaximumBushes = 300;
         private const int MaximumFurniture = 160;
         private const int MaximumFencePieces = 500;
+        private const float FenceInset = 0.20f;
 
         internal static ParkDecorationPlan Generate(IReadOnlyList<float2> polygon,
             ParkPathPlan paths, IReadOnlyList<float2> entrances, int seed,
@@ -375,6 +376,7 @@ namespace ParkManager.Geometry
             IReadOnlyList<float2> polygon, IReadOnlyList<float2> entrances,
             float builtPathWidth, uint seed)
         {
+            var fenceBoundary = InsetFenceBoundary(polygon);
             var random = new Unity.Mathematics.Random(seed == 0 ? 1u : seed);
             // One deterministic prefab variant is used for the complete fence.
             // Mixing pieces with different mesh lengths cannot form a continuous
@@ -384,8 +386,8 @@ namespace ParkManager.Geometry
             for (var edgeIndex = 0; edgeIndex < polygon.Count
                 && count < MaximumFencePieces; edgeIndex++)
             {
-                var a = polygon[edgeIndex];
-                var b = polygon[(edgeIndex + 1) % polygon.Count];
+                var a = fenceBoundary[edgeIndex];
+                var b = fenceBoundary[(edgeIndex + 1) % polygon.Count];
                 var delta = b - a;
                 var length = math.length(delta);
                 if (length < 1f) continue;
@@ -425,6 +427,46 @@ namespace ParkManager.Geometry
                     count++;
                 }
             }
+        }
+
+        /// <summary>
+        /// Moves shared fence corners into the polygon. Offsetting individual
+        /// edge centres would separate adjacent native fence-network nodes.
+        /// </summary>
+        private static float2[] InsetFenceBoundary(IReadOnlyList<float2> polygon)
+        {
+            var inset = new float2[polygon.Count];
+            var orientation = SignedArea(polygon) >= 0d ? 1f : -1f;
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var previous = polygon[(i + polygon.Count - 1) % polygon.Count];
+                var corner = polygon[i];
+                var next = polygon[(i + 1) % polygon.Count];
+                var before = math.normalizesafe(corner - previous);
+                var after = math.normalizesafe(next - corner);
+                if (math.lengthsq(before) < 0.5f
+                    || math.lengthsq(after) < 0.5f)
+                {
+                    inset[i] = corner;
+                    continue;
+                }
+                var firstNormal = new float2(-before.y, before.x) * orientation;
+                var secondNormal = new float2(-after.y, after.x) * orientation;
+                var bisector = math.normalizesafe(firstNormal + secondNormal,
+                    secondNormal);
+                var distance = FenceInset / math.max(0.25f,
+                    math.dot(bisector, secondNormal));
+                var candidate = corner + bisector * math.min(distance,
+                    FenceInset * 3f);
+                if (!PointInside(candidate, polygon))
+                {
+                    candidate = corner + secondNormal * FenceInset;
+                    if (!PointInside(candidate, polygon))
+                        candidate = corner + firstNormal * FenceInset;
+                }
+                inset[i] = candidate;
+            }
+            return inset;
         }
 
         private static void CutFenceGap(List<float2> runs, float gapStart,

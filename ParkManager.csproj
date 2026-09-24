@@ -27,8 +27,10 @@
 
   <ItemGroup>
     <Compile Remove="UI\**\*.cs" />
+    <Compile Remove="tests\**\*.cs" />
     <Compile Remove="repos\**\*.cs" />
     <None Remove="UI\node_modules\**" />
+    <None Remove="tests\**" />
     <None Remove="repos\**" />
   </ItemGroup>
 

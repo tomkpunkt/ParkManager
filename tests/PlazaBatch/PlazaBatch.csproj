@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="Program.cs" />
+    <Compile Include="MockServer.cs" />
+    <Compile Include="ModLogStub.cs" />
+    <Compile Include="../../Geometry/PlazaPlan.cs" Link="PlazaPlan.cs" />
+    <Compile Include="../../Geometry/PlazaPlanner.cs" Link="PlazaPlanner.cs" />
+    <Compile Include="../../Geometry/ParkPathPlan.cs" Link="ParkPathPlan.cs" />
+    <Compile Include="../../Geometry/ParkPathPlanner.cs" Link="ParkPathPlanner.cs" />
+    <Compile Include="../../Geometry/ParkDecorationPlan.cs" Link="ParkDecorationPlan.cs" />
+    <Compile Include="../../Geometry/ParkDecorationPlanner.cs" Link="ParkDecorationPlanner.cs" />
+    <Reference Include="Unity.Mathematics">
+      <HintPath>C:\Program Files\Studio 2.0\Studio_Data\Managed\Unity.Mathematics.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

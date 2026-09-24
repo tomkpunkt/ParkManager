@@ -7,6 +7,12 @@ notes/
 specs/
 UI/node_modules/
 UI/build/
+UI/mock/dist/
+UI/playwright-report/
+UI/test-results/
+tests/**/bin/
+tests/**/obj/
+tests/**/report.json
 .vs/
 *.user
 *.suo

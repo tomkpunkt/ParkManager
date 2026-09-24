@@ -151,31 +151,6 @@ namespace ParkManager.Tools
             GenerateDecorationPlan(_decorationPlan.Seed);
         }
 
-        internal void ToggleFence()
-        {
-            if (PathBuildBusy || DecorationBuildBusy || HasBuiltDecorations)
-            {
-                PublishState(HasBuiltDecorations
-                    ? "Zum Ändern des Zauns zuerst die Ausstattung entfernen."
-                    : "Der aktuelle Bau wird noch von CS2 verarbeitet.");
-                return;
-            }
-            _fenceEnabled = !_fenceEnabled;
-            var fenceBit = 1 << ((int)ParkDecorationKind.Fence - 1);
-            if (_fenceEnabled) _decorationEnabledMask |= fenceBit;
-            else _decorationEnabledMask &= ~fenceBit;
-            if (_pathPlan != null)
-            {
-                var seed = _decorationPlan?.Seed
-                    ?? unchecked(_pathPlan.Seed * 1103515245 + 12345) & int.MaxValue;
-                if (seed == 0) seed = 1;
-                GenerateDecorationPlan(seed);
-            }
-            else PublishDecorationState(_fenceEnabled
-                ? "Zaun aktiviert · zuerst Wege planen."
-                : "Zaun deaktiviert · zuerst Wege planen.");
-        }
-
         internal void SetVegetationDensity(int density)
         {
             if (PathBuildBusy || DecorationBuildBusy)
@@ -232,18 +207,29 @@ namespace ParkManager.Tools
                 PublishState("Zuerst ein Wegenetz im Parkplaner erzeugen.");
                 return;
             }
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && (_plazaPlan == null || _plazaPlan.Furniture.Count == 0))
+            {
+                _decorationPlan = null;
+                PublishDecorationState("Das Arrangement passt nicht auf diese Plaza-Fläche.");
+                return;
+            }
             var gates = new List<float2>(_entrances.Count);
             for (var i = 0; i < _entrances.Count; i++) gates.Add(_entrances[i].xz);
             // Resolve the real Vanilla net before furnishing. The procedural
             // edge width is only a design value and PedestrianPathWide01 is
             // considerably broader in the rendered game.
             ResolvePlacementPrefabs();
-            _decorationPlan = ParkDecorationPlanner.Generate(_points, _pathPlan,
-                gates, seed, _selectedPathWidth, _fenceEnabled,
-                _vegetationDensity, _furnitureDensity,
-                _decorationEnabledMask);
-            FitFurnitureToSelectedAssets();
-            UpdateBuildReceipt(_lastBuildRecord);
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza)
+                _decorationPlan = GeneratePlazaDecorations(seed);
+            else
+            {
+                _decorationPlan = ParkDecorationPlanner.Generate(_points,
+                    _pathPlan, gates, seed, _selectedPathWidth,
+                    _fenceEnabled, _vegetationDensity, _furnitureDensity,
+                    _decorationEnabledMask);
+                FitFurnitureToSelectedAssets();
+            }
             var summary = DecorationPlanSummary(_decorationPlan);
             PublishState("Ausstattungsvariante geplant: " + summary);
             PublishDecorationState(summary);
@@ -271,9 +257,29 @@ namespace ParkManager.Tools
                 PublishState("Zuerst eine Ausstattungsvariante planen.");
                 return;
             }
-
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && (_plazaPlan == null || _plazaPlan.Furniture.Count == 0))
+            {
+                PublishState("Das Arrangement passt nicht auf diese Plaza-Fläche.");
+                return;
+            }
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && _plazaPlan?.HasCenterpiece == true
+                && !_assetCatalog.TryGetFittingPlazaCenter(_points,
+                    out _, out _))
+            {
+                PublishState("Das gewählte Plaza-Zentrum ist nicht mehr verfügbar.");
+                return;
+            }
             try
             {
+                if (!ValidateDecorationSite(out var siteProblem))
+                {
+                    PublishState(siteProblem);
+                    PublishDecorationState(siteProblem);
+                    return;
+                }
+                _buildDefinitions.Clear();
                 var preparationTimer = System.Diagnostics.Stopwatch.StartNew();
                 _pendingDecorations.Clear();
                 _pendingSurfacePrefab = Entity.Null;
@@ -297,7 +303,13 @@ namespace ParkManager.Tools
                 for (var i = 0; i < _decorationPlan.Placements.Count; i++)
                 {
                     var placement = _decorationPlan.Placements[i];
-                    if (!TryResolveParkAsset(placement, out var prefab)) continue;
+                    if (!TryResolveParkAsset(placement, out var prefab))
+                    {
+                        if (_selectedSiteKind == ProceduralSiteKind.Plaza)
+                            throw new InvalidOperationException(
+                                "Ein Asset des Plaza-Arrangements ist nicht verfügbar.");
+                        continue;
+                    }
                     if (placement.Kind == ParkDecorationKind.Fence)
                     {
                         if (_assetCatalog.IsNetworkFence(prefab))
@@ -324,8 +336,21 @@ namespace ParkManager.Tools
                         continue;
                     }
                     CaptureDecorationObjectPrefab(prefab);
+                    // CS2 uses CreationDefinition.m_RandomSeed for mesh/color
+                    // variation. One fixed value and one selected prefab per
+                    // furniture category keep a plaza visually consistent;
+                    // the geometry seed remains free to vary its layout.
+                    var appearanceSeed = _selectedSiteKind == ProceduralSiteKind.Plaza
+                        && IsPlazaColorFurniture(placement.Kind)
+                        ? 1 : random.NextInt();
                     if (!CreateObjectDefinition(placement, prefab,
-                        ref heightData, random.NextInt(), out var position)) continue;
+                        ref heightData, appearanceSeed, out var position))
+                    {
+                        if (_selectedSiteKind == ProceduralSiteKind.Plaza)
+                            throw new InvalidOperationException(
+                                "Ein Element des Plaza-Arrangements konnte nicht platziert werden.");
+                        continue;
+                    }
                     _pendingDecorations.Add(new PendingDecoration
                     {
                         Prefab = prefab,
@@ -379,7 +404,6 @@ namespace ParkManager.Tools
             }
             var removed = DeleteDecorationMembers(_lastBuildRecord);
             RefreshEditableBaseline(_lastBuildRecord);
-            UpdateBuildReceipt(_lastBuildRecord, false);
             PublishState($"Parkfläche und Ausstattung entfernt ({removed} Elemente); Wege bleiben bestehen.");
             PublishDecorationState("Geplant · noch nicht gebaut · "
                 + DecorationPlanSummary(_decorationPlan));
@@ -477,7 +501,9 @@ namespace ParkManager.Tools
                     category = ParkAssetCategory.Tree;
                     break;
                 case ParkDecorationKind.Bush:
-                    category = ParkAssetCategory.Bush;
+                    category = _selectedSiteKind == ProceduralSiteKind.Plaza
+                        ? ParkAssetCategory.PlazaPlanter
+                        : ParkAssetCategory.Bush;
                     break;
                 case ParkDecorationKind.Bench:
                     category = ParkAssetCategory.Bench;
@@ -491,15 +517,40 @@ namespace ParkManager.Tools
                 case ParkDecorationKind.TrashBin:
                     category = ParkAssetCategory.TrashBin;
                     break;
+                case ParkDecorationKind.PlazaCenter:
+                    category = ParkAssetCategory.PlazaCenter;
+                    break;
                 default:
                     prefab = Entity.Null;
                     return false;
             }
+            if (category == ParkAssetCategory.PlazaCenter
+                && _assetCatalog.TryGetFittingPlazaCenter(_points,
+                    out prefab, out _))
+                return true;
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && !string.IsNullOrEmpty(placement.ExplicitAssetName))
+                return _assetCatalog.TryGetNamed(category,
+                    placement.ExplicitAssetName, out prefab);
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && IsPlazaColorFurniture(placement.Kind)
+                && _assetCatalog.TryGetSelected(category, out prefab, out _))
+                return true;
             if (_assetCatalog.TryGetParkVariant(category, _decorationPlan.Seed,
                 placement.Variant, out prefab, out _)) return true;
+            if (category == ParkAssetCategory.PlazaPlanter
+                && _assetCatalog.TryGetParkVariant(ParkAssetCategory.Bush,
+                    _decorationPlan.Seed, placement.Variant, out prefab,
+                    out _)) return true;
             Mod.Log.Warn($"ParkManager has no usable {category} prefab; layer skipped.");
             return false;
         }
+
+        private static bool IsPlazaColorFurniture(ParkDecorationKind kind)
+            => kind == ParkDecorationKind.Bench
+                || kind == ParkDecorationKind.Lamp
+                || kind == ParkDecorationKind.TrashBin
+                || kind == ParkDecorationKind.PlazaCenter;
 
         /// <summary>
         /// Replaces the planner's conservative furniture footprint with the
@@ -584,7 +635,7 @@ namespace ParkManager.Tools
             position = new float3(placement.Position.x, 0f, placement.Position.y);
             position.y = TerrainUtils.SampleHeight(ref heightData, position);
             if (!math.all(math.isfinite(position))) return false;
-            var definition = EntityManager.CreateEntity();
+            var definition = CreateBuildDefinition();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
                 m_Prefab = prefab,
@@ -603,7 +654,8 @@ namespace ParkManager.Tools
             // path furniture by a quarter turn aligns the built bench with its
             // preview and makes directional lamps face the path.
             var rotation = placement.Rotation;
-            if (placement.Kind == ParkDecorationKind.Bench
+            if ((placement.Kind == ParkDecorationKind.Bench
+                    && _selectedSiteKind != ProceduralSiteKind.Plaza)
                 || placement.Kind == ParkDecorationKind.Lamp
                 || placement.Kind == ParkDecorationKind.TrashBin)
                 rotation += math.PI * 0.5f;
@@ -686,7 +738,7 @@ namespace ParkManager.Tools
                 return false;
 
             var curve = NetUtils.StraightCurve(start, end);
-            var definition = EntityManager.CreateEntity();
+            var definition = CreateBuildDefinition();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
                 m_Prefab = prefab,
@@ -773,7 +825,7 @@ namespace ParkManager.Tools
             ref TerrainHeightData heightData)
         {
             if (_points.Count < 3) return false;
-            var definition = EntityManager.CreateEntity();
+            var definition = CreateBuildDefinition();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
                 m_Prefab = prefab,
@@ -1118,8 +1170,8 @@ namespace ParkManager.Tools
             ApplyPermanentTreeAges();
             LogFurnitureVisibility(_lastBuildRecord);
             RefreshEditableBaseline(_lastBuildRecord);
-            UpdateBuildReceipt(_lastBuildRecord, true);
             var count = CountDecorationMembers(_lastBuildRecord);
+            _buildDefinitions.Clear();
             _pendingDecorations.Clear();
             _pendingSurfacePrefab = Entity.Null;
             _pendingFencePrefab = Entity.Null;
@@ -1127,6 +1179,8 @@ namespace ParkManager.Tools
             _expectedDecorationMembers = 0;
             ClearDecorationMaterializationBaselines();
             _decorationBuildPhase = DecorationBuildPhase.Idle;
+            _preflightWarning = null;
+            _buildIssues.Clear();
             PublishState($"Parkfläche und Ausstattung gebaut: {count} frei editierbare Elemente.");
             PublishDecorationState("Gebaut · frei editierbar · "
                 + DecorationPlanSummary(_decorationPlan));
@@ -1294,6 +1348,7 @@ namespace ParkManager.Tools
                 case ParkDecorationKind.Lamp: return ParkPathMemberKind.Lamp;
                 case ParkDecorationKind.Fence: return ParkPathMemberKind.Fence;
                 case ParkDecorationKind.TrashBin: return ParkPathMemberKind.TrashBin;
+                case ParkDecorationKind.PlazaCenter: return ParkPathMemberKind.PlazaCenter;
                 default: return ParkPathMemberKind.Bush;
             }
         }
@@ -1301,6 +1356,16 @@ namespace ParkManager.Tools
         private string DecorationPlanSummary(ParkDecorationPlan plan)
         {
             if (plan == null) return "Noch keine Ausstattung geplant.";
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza)
+            {
+                var centerName = _plazaPlan?.HasCenterpiece == true
+                    ? _assetCatalog.GetSelectedPlazaCenterName() : "ohne";
+                return $"Plaza · Seed {plan.Seed} · Zentrum "
+                    + $"{centerName} · "
+                    + $"{plan.Count(ParkDecorationKind.Bench)} Bänke · "
+                    + $"{plan.Count(ParkDecorationKind.Lamp)} Lampen · "
+                    + $"{plan.Count(ParkDecorationKind.TrashBin)} Mülleimer";
+            }
             return $"Vorlage {_assetCatalog.GetParkPaletteName(plan.Seed)} · "
                 + $"Seed {plan.Seed} · {plan.Count(ParkDecorationKind.Tree)} Bäume · "
                 + $"{plan.Count(ParkDecorationKind.Bush)} Büsche · "
@@ -1314,11 +1379,16 @@ namespace ParkManager.Tools
 
         private void AbortDecorationBuild(string reason)
         {
-            Mod.Log.Warn("ParkManager decoration build aborted: " + reason);
+            _preflightWarning = null;
+            Mod.Log.Warn($"ParkManager decoration build aborted in "
+                + $"{_decorationBuildPhase} (seed {_decorationPlan?.Seed ?? 0}, "
+                + $"expected {_pendingDecorations.Count} objects/"
+                + $"{_expectedFenceCourses} fence courses): {reason}");
             TagPermanentDecorationEntities(out var permanentObjects,
                 out var permanentSurfaces, out var permanentFenceEdges,
                 out var permanentFenceNodes);
             DeleteDecorationMembers(_lastBuildRecord);
+            var discardedDefinitions = DiscardBuildDefinitions();
             _pendingDecorations.Clear();
             _pendingSurfacePrefab = Entity.Null;
             _pendingFencePrefab = Entity.Null;
@@ -1333,7 +1403,8 @@ namespace ParkManager.Tools
                 + $"{permanentObjects} permanent objects, "
                 + $"{permanentSurfaces} permanent surfaces, "
                 + $"{permanentFenceEdges} permanent fence edges and "
-                + $"{permanentFenceNodes} permanent fence nodes.");
+                + $"{permanentFenceNodes} permanent fence nodes; discarded "
+                + $"{discardedDefinitions} definitions.");
         }
 
         private void DecorationBuildWasRemoved()
@@ -1351,7 +1422,7 @@ namespace ParkManager.Tools
         }
 
         private void PublishDecorationState(string summary)
-            => _ui?.SetDecorationState(_fenceEnabled, _vegetationDensity,
+            => _ui?.SetDecorationState(_vegetationDensity,
                 _furnitureDensity, _decorationEnabledMask,
                 _decorationPlan != null, DecorationBuildBusy,
                 HasBuiltDecorations, summary);

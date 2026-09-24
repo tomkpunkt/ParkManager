@@ -35,8 +35,11 @@ namespace ParkManager.Tools
         private ValueBinding<string> _pathBuildSummary;
         private ValueBinding<int> _pathType;
         private ValueBinding<int> _siteType;
+        private ValueBinding<int> _plazaLayout;
+        private ValueBinding<string> _plazaCenterOptionsJson;
+        private ValueBinding<string> _plazaCenterSelected;
+        private ValueBinding<string> _plazaArrangementJson;
         private ValueBinding<int> _snapMask;
-        private ValueBinding<bool> _fenceEnabled;
         private ValueBinding<int> _vegetationDensity;
         private ValueBinding<int> _furnitureDensity;
         private ValueBinding<int> _decorationEnabledMask;
@@ -44,7 +47,6 @@ namespace ParkManager.Tools
         private ValueBinding<bool> _decorationBuildBusy;
         private ValueBinding<bool> _decorationBuildPresent;
         private ValueBinding<string> _decorationSummary;
-        private ValueBinding<int> _parkCount;
         private ValueBinding<string> _locale;
         private string _lastLocale = "en";
 
@@ -92,10 +94,16 @@ namespace ParkManager.Tools
                 Group, "PathType", (int)ParkPathType.Wide));
             AddBinding(_siteType = new ValueBinding<int>(
                 Group, "SiteType", (int)ProceduralSiteKind.Park));
+            AddBinding(_plazaLayout = new ValueBinding<int>(
+                Group, "PlazaLayout", 0));
+            AddBinding(_plazaCenterOptionsJson = new ValueBinding<string>(
+                Group, "PlazaCenterOptionsJson", "[]"));
+            AddBinding(_plazaCenterSelected = new ValueBinding<string>(
+                Group, "PlazaCenterSelected", string.Empty));
+            AddBinding(_plazaArrangementJson = new ValueBinding<string>(
+                Group, "PlazaArrangementJson", "[]"));
             AddBinding(_snapMask = new ValueBinding<int>(
                 Group, "SnapMask", (int)ParkToolSystem.SupportedSnapKinds));
-            AddBinding(_fenceEnabled = new ValueBinding<bool>(
-                Group, "FenceEnabled", false));
             AddBinding(_vegetationDensity = new ValueBinding<int>(
                 Group, "VegetationDensity", 100));
             AddBinding(_furnitureDensity = new ValueBinding<int>(
@@ -110,8 +118,6 @@ namespace ParkManager.Tools
                 Group, "DecorationBuildPresent", false));
             AddBinding(_decorationSummary = new ValueBinding<string>(
                 Group, "DecorationSummary", "Noch keine Ausstattung geplant."));
-            AddBinding(_parkCount = new ValueBinding<int>(
-                Group, "ParkCount", 0));
             _lastLocale = GetSupportedLocale();
             AddBinding(_locale = new ValueBinding<string>(
                 Group, "Locale", _lastLocale));
@@ -139,6 +145,15 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding<int>(Group, "SetSiteType",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .SetSiteKind(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetPlazaLayout",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPlazaLayout(value)));
+            AddBinding(new TriggerBinding<string>(Group, "SelectPlazaCenter",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SelectPlazaCenter(value)));
+            AddBinding(new TriggerBinding<string>(Group, "EditPlazaArrangement",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .EditPlazaArrangement(value)));
             AddBinding(new TriggerBinding(Group, "RemoveBuiltPaths",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .RemoveBuiltPaths()));
@@ -151,9 +166,6 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding(Group, "GenerateDecorations",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .GenerateDecorations()));
-            AddBinding(new TriggerBinding(Group, "ToggleFence",
-                () => World.GetOrCreateSystemManaged<ParkToolSystem>()
-                    .ToggleFence()));
             AddBinding(new TriggerBinding<int>(Group, "SetVegetationDensity",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .SetVegetationDensity(value)));
@@ -221,6 +233,9 @@ namespace ParkManager.Tools
             _assetOptionsJson?.Update(optionsJson ?? "{}");
             _parkPaletteOptionsJson?.Update(parkPaletteOptionsJson ?? "[]");
             _selectedParkPalette?.Update(selectedParkPalette ?? string.Empty);
+            var catalog = World.GetOrCreateSystemManaged<ParkAssetCatalogSystem>();
+            SetPlazaCenterOptions(catalog.GetPlazaCenterOptionsJson(),
+                catalog.GetSelectedPlazaCenterName());
         }
 
         internal void SetPlannerState(bool plannerMode, int entranceCount,
@@ -242,13 +257,24 @@ namespace ParkManager.Tools
 
         internal void SetSiteType(int type) => _siteType?.Update(type);
 
+        internal void SetPlazaLayout(int layout) => _plazaLayout?.Update(layout);
+
+        internal void SetPlazaArrangement(string json)
+            => _plazaArrangementJson?.Update(json ?? "[]");
+
+        internal void SetPlazaCenterOptions(string optionsJson,
+            string selectedName)
+        {
+            _plazaCenterOptionsJson?.Update(optionsJson ?? "[]");
+            _plazaCenterSelected?.Update(selectedName ?? string.Empty);
+        }
+
         internal void SetSnapMask(int mask) => _snapMask?.Update(mask);
 
-        internal void SetDecorationState(bool fenceEnabled, int vegetationDensity,
+        internal void SetDecorationState(int vegetationDensity,
             int furnitureDensity, int enabledMask, bool planReady,
             bool busy, bool present, string summary)
         {
-            _fenceEnabled?.Update(fenceEnabled);
             _vegetationDensity?.Update(vegetationDensity);
             _furnitureDensity?.Update(furnitureDensity);
             _decorationEnabledMask?.Update(enabledMask);
@@ -257,9 +283,6 @@ namespace ParkManager.Tools
             _decorationBuildPresent?.Update(present);
             _decorationSummary?.Update(summary);
         }
-
-        internal void SetWorkspaceState(int parkCount)
-            => _parkCount?.Update(parkCount);
 
         protected override void OnUpdate()
         {

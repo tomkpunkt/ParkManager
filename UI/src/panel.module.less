@@ -10,6 +10,8 @@
 
 .panel {
   position: absolute;
+  display: flex;
+  flex-direction: column;
   top: 18rem;
   left: 50%;
   z-index: 50;
@@ -63,6 +65,7 @@
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
+  gap: 4rem;
 }
 
 .progressStep {
@@ -71,7 +74,7 @@
   flex: 1 1 0;
   min-width: 0;
   height: 34rem;
-  margin-right: 4rem;
+  margin-right: 0;
   padding: 0 8rem;
   box-sizing: border-box;
   border-bottom: 2rem solid transparent;
@@ -193,16 +196,17 @@
 
 .panelBody {
   display: flex;
-  min-height: 330rem;
-  padding: 18rem @panelInset 0;
+  min-height: 340rem;
+  padding: @panelInset;
   box-sizing: border-box;
 }
 
 /* Keep the three compact workflow steps identical, with room for path options. */
 .compactBody {
   min-height: 170rem;
-  padding-top: 6rem;
 }
+
+.plazaBody { min-height: 260rem; }
 
 .compactBody .stageColumn {
   padding-bottom: 0;
@@ -214,22 +218,23 @@
 .compactBody .statePill { min-height: 22rem; padding-top: 2rem; padding-bottom: 2rem; }
 
 .stageColumn.pathStageColumn {
+  display: flex;
   flex-direction: row;
   align-items: flex-start;
-  justify-content: space-between;
+  gap: @panelGap;
 }
 
 .pathStageColumn .stageCopy {
-  flex: 1 1 auto;
+  flex: 1 1 0;
 }
 
 .pathSettings {
   display: flex;
   flex-direction: column;
-  gap: 4rem;
-  flex: 0 0 700rem;
+  gap: @panelGap;
+  flex: 1 1 0;
+  min-width: 0;
   align-self: flex-start;
-  margin-left: 24rem;
 }
 
 .compactSetting {
@@ -242,13 +247,14 @@
 }
 
 .compactSetting > span {
-  flex: 0 0 88rem;
-  margin-right: 10rem;
+  flex: 0 0 72rem;
+  margin-right: @panelGap;
   text-align: right;
 }
 
 .compactSetting .segmentedControl {
-  flex: 0 0 560rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .compactSetting .segmentedControl button {
@@ -261,7 +267,7 @@
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  flex: 0 0 560rem;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 32rem;
   max-height: 74rem;
@@ -291,12 +297,84 @@
   background-color: rgba(79, 195, 247, 0.24);
 }
 
+.plazaCenterSetting { min-height: 84rem; }
+
+.plazaCenterChoices {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 84rem;
+  max-height: 84rem;
+  gap: 6rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.plazaCenterChoice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40rem;
+  min-width: 0;
+  height: 38rem;
+  padding: 3rem;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 4rem;
+  color: var(--menuText2Normal);
+  background-color: rgba(10, 19, 31, 0.72);
+  font-size: var(--fontSizeXS);
+  text-align: left;
+}
+
+.plazaCenterChoice:hover:not(:disabled) { background-color: var(--menuHoverColor); }
+.plazaCenterChoice img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.plazaCenterChoiceActive {
+  border-color: @assets;
+  color: var(--menuText1Normal);
+  background-color: rgba(124, 212, 85, 0.16);
+}
+
+.assetTooltip {
+  position: absolute;
+  z-index: 200;
+  max-width: 210rem;
+  padding: 4rem 7rem;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 4rem;
+  color: var(--menuText1Normal);
+  background-color: rgba(10, 19, 31, 0.96);
+  font-size: var(--fontSizeXS);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plazaCenterChoicesEmpty {
+  display: flex;
+  align-items: center;
+  flex: 0 0 560rem;
+  min-height: 32rem;
+  color: var(--menuText2Normal);
+  font-size: var(--fontSizeXS);
+}
+
 .stageColumn {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  padding: 0 0 10rem;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -305,8 +383,8 @@
   align-items: center;
   justify-content: space-between;
   gap: @panelGap;
-  min-height: 44rem;
-  padding: 0 @panelInset 8rem;
+  min-height: 56rem;
+  padding: @panelInset;
   box-sizing: border-box;
 }
 
@@ -364,9 +442,21 @@
   line-height: 1.35;
 }
 
+.stageCopy .buildWarning {
+  max-width: 700rem;
+  padding: 7rem 10rem;
+  border-left: 3rem solid #e6b657;
+  border-radius: 3rem;
+  background: rgba(92, 68, 27, 0.55);
+  color: #fff4d9;
+  font-weight: bold;
+}
+
 .stateRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: @panelGap;
 }
 
 .pathTypeControl {
@@ -421,7 +511,7 @@
   display: flex;
   align-items: center;
   min-height: 28rem;
-  margin-right: 7rem;
+  margin-right: 0;
   padding: 4rem 10rem;
   box-sizing: border-box;
   border: 1rem solid var(--menuBorderColor1);
@@ -565,26 +655,33 @@
   text-transform: uppercase;
 }
 
-/* Asset step: fixed two-column workspace. Opening a category only replaces
-   the right pane, so the whole panel no longer jumps in height. */
+/* Gameface uses Yoga/Flexbox, not CSS Grid. Keep both columns in flow.
+   https://guide.coherent-labs.com/layout-assets-and-styling/laying-out-the-screen/ */
 .assetStage {
-  position: relative;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: @panelGap;
   width: 100%;
-  height: 320rem;
+  min-width: 0;
 }
 
-.assetBody { padding-bottom: @panelGap; }
+.assetBody { min-height: 330rem; }
+
+.assetStageTop {
+  display: flex;
+  flex-direction: row;
+  gap: @panelGap;
+  flex: 0 0 80rem;
+  min-height: 80rem;
+  min-width: 0;
+}
 
 .assetStageHeader {
-  position: absolute;
-  top: 0;
-  left: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  width: 49%;
-  height: 80rem;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .assetStageHeader > div:first-child {
@@ -594,24 +691,21 @@
 .assetStageHeader p { margin-bottom: 4rem; }
 
 .densitySettings {
-  position: absolute;
-  top: 0;
-  right: 0;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  width: 49%;
-  height: 80rem;
+  gap: @panelGap;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
-.densitySettings .densityControl + .densityControl { margin-top: @panelGap; }
-
 .densityControl {
-  position: relative;
   display: flex;
   align-items: center;
+  min-width: 0;
   min-height: 35rem;
-  padding: 5rem 80rem 5rem 10rem;
+  flex: 1 1 0;
+  gap: @panelGap;
+  padding: 5rem @panelInset;
   box-sizing: border-box;
   border: 1rem solid var(--menuBorderColor1);
   border-radius: 5rem;
@@ -620,17 +714,16 @@
   font-size: var(--fontSizeXS);
   font-weight: bold;
   white-space: nowrap;
-  flex: 1 1 0;
 }
 
-.densityControl > span { flex: 0 0 140rem; }
+.densityControl > span { flex: 0 0 140rem; min-width: 140rem; }
 
 .densitySlider {
   position: relative;
-  flex: 0 0 320rem;
-  width: 320rem;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 24rem;
-  margin: 0 9rem;
+  margin: 0;
   padding: 0;
   border: 0;
   background-color: transparent;
@@ -672,12 +765,12 @@
 }
 
 .densityControl strong {
-  position: absolute;
-  top: 8rem;
-  right: 10rem;
-  display: block;
-  width: 60rem;
-  min-width: 60rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 64rem;
+  width: 64rem;
+  min-width: 64rem;
   color: var(--menuText1Normal);
   text-align: right;
   white-space: nowrap;
@@ -732,23 +825,26 @@
 .fenceToggleActive .toggleKnob { left: 17rem; margin-left: 0; background-color: @assets; }
 
 .assetWorkspace {
-  position: absolute;
-  top: 90rem;
-  left: 0;
-  display: block;
-  width: 100%;
-  height: 230rem;
+  display: flex;
+  flex-direction: row;
+  gap: @panelGap;
+  flex: 0 0 220rem;
+  height: 220rem;
+  min-width: 0;
+  max-height: 220rem;
 }
 
 .assetGrid {
-  position: absolute;
-  top: 0;
-  left: 0;
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
+  align-items: flex-start;
+  gap: @panelGap;
+  flex: 0 0 49%;
   width: 49%;
-  height: 230rem;
+  min-width: 0;
+  height: 220rem;
+  overflow: hidden;
 }
 
 .assetTile {
@@ -757,11 +853,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 0 0 32%;
-  width: 32%;
+  flex: 0 0 31%;
+  width: 31%;
   height: 105rem;
-  margin-right: 2%;
-  margin-bottom: @panelGap;
+  min-width: 0;
   padding: 22rem 10rem 17rem;
   box-sizing: border-box;
   overflow: hidden;
@@ -774,8 +869,6 @@
 }
 
 .assetTile:hover { background-color: var(--menuHoverColor); }
-.assetTile:nth-child(3n) { margin-right: 0; }
-
 .assetTileDisabled .assetTileVisual,
 .assetTileDisabled .assetTileCount { opacity: 0.32; }
 
@@ -860,15 +953,13 @@
 }
 
 .assetChooser {
-  position: absolute;
-  top: 0;
-  right: 0;
   display: flex;
   flex-direction: column;
+  flex: 0 0 49%;
   width: 49%;
-  height: 220rem;
   min-width: 0;
-  min-height: 0;
+  height: 220rem;
+  box-sizing: border-box;
   overflow: hidden;
   border: 1rem solid var(--menuBorderColor1);
   border-radius: 7rem;
@@ -953,6 +1044,162 @@
   font-size: 8rem;
   line-height: 11rem;
   text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Plaza arrangements use the same fixed stage geometry as the park catalog. */
+.plazaArrangementStage {
+  display: flex;
+  flex-direction: column;
+  gap: @panelGap;
+  width: 100%;
+  min-width: 0;
+}
+
+.plazaArrangementStage .assetStageHeader {
+  gap: @panelGap;
+  flex: 0 0 80rem;
+}
+
+.plazaArrangementDensity {
+  display: flex;
+  align-items: center;
+  flex: 0 0 49%;
+  height: 38rem;
+  padding: 5rem 10rem;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 5rem;
+  color: var(--menuText2Normal);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: var(--fontSizeXS);
+  white-space: nowrap;
+}
+
+.plazaArrangementDensity > span { flex: 0 0 145rem; }
+.plazaArrangementDensity .densitySlider { flex: 1 1 auto; width: auto; }
+.plazaArrangementDensity strong {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 64rem;
+  width: 64rem;
+  min-width: 64rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.plazaArrangementWorkspace {
+  display: flex;
+  flex-direction: row;
+  gap: @panelGap;
+  flex: 0 0 230rem;
+  height: 230rem;
+  min-width: 0;
+  max-height: 230rem;
+}
+
+.plazaArrangementSlots,
+.plazaArrangementPicker {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 49%;
+  width: 49%;
+  min-width: 0;
+  height: 230rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 7rem;
+  background: @surfaceStrong;
+}
+
+.plazaArrangementSlotRow {
+  display: flex;
+  gap: 5rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10rem;
+}
+
+.plazaArrangementSlot,
+.plazaArrangementAdd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5rem;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 5rem;
+  color: var(--menuText1Normal);
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: auto;
+}
+
+.plazaArrangementSlotActive {
+  border-color: @assets;
+  background: rgba(124, 212, 85, 0.14);
+}
+
+.plazaArrangementSlot img { max-width: 55rem; height: 60rem; object-fit: contain; }
+.plazaArrangementSlot b { font-size: 28rem; color: @assets; }
+.plazaArrangementSlot small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8rem;
+}
+.plazaArrangementAdd { font-size: 28rem; color: @assets; }
+
+.plazaArrangementActions {
+  display: flex;
+  gap: @panelGap;
+  flex: 0 0 38rem;
+  padding: 0 10rem 9rem;
+}
+.plazaArrangementActions button {
+  min-width: 35rem;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: 4rem;
+  color: var(--menuText1Normal);
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: auto;
+}
+.plazaArrangementActions button:last-child { margin-left: auto; padding: 0 9rem; }
+
+.plazaArrangementKinds {
+  display: flex;
+  flex: 0 0 34rem;
+  min-height: 34rem;
+}
+.plazaArrangementKinds button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 3rem;
+  overflow: hidden;
+  border: 0;
+  border-right: 1rem solid var(--menuBorderColor1);
+  color: var(--menuText2Normal);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 10rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.plazaArrangementKinds .segmentActive {
+  color: var(--menuText1Normal);
+  background: rgba(124, 212, 85, 0.20);
+}
+.plazaArrangementSelection {
+  flex: 0 0 22rem;
+  padding: 3rem 8rem;
+  overflow: hidden;
+  color: var(--menuText2Normal);
+  font-size: 9rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -12,6 +12,7 @@ namespace ParkManager.Geometry
         Lamp = 4,
         Fence = 5,
         TrashBin = 6,
+        PlazaCenter = 7,
     }
 
     /// <summary>
@@ -27,6 +28,7 @@ namespace ParkManager.Geometry
         public float Size;
         public uint Variant;
         public byte AgeStage;
+        public string ExplicitAssetName;
     }
 
     /// <summary>

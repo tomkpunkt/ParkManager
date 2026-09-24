@@ -18,6 +18,11 @@ export const assetCategories = [
   { key: "trashbin", payload: "TrashBin", multi: false, kind: 6 },
 ] as const;
 
+export const plazaAssetCategories = assetCategories.map((item) =>
+  item.key === "bush"
+    ? { key: "plazaplanter", payload: "PlazaPlanter", multi: true, kind: 2 }
+    : item);
+
 export type AssetCategory = typeof assetCategories[number];
 
 /** Parses the version-tolerant JSON bridge and rejects unusable icon tiles. */

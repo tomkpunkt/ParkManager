@@ -17,8 +17,11 @@ export const pathBuildPresent$ = bindValue<boolean>(MOD, "PathBuildPresent", fal
 export const pathBuildSummary$ = bindValue<string>(MOD, "PathBuildSummary", "");
 export const pathType$ = bindValue<number>(MOD, "PathType", 1);
 export const siteType$ = bindValue<number>(MOD, "SiteType", 0);
+export const plazaLayout$ = bindValue<number>(MOD, "PlazaLayout", 0);
+export const plazaCenterOptionsJson$ = bindValue<string>(MOD, "PlazaCenterOptionsJson", "[]");
+export const plazaCenterSelected$ = bindValue<string>(MOD, "PlazaCenterSelected", "");
+export const plazaArrangementJson$ = bindValue<string>(MOD, "PlazaArrangementJson", "[]");
 export const snapMask$ = bindValue<number>(MOD, "SnapMask", 0);
-export const fenceEnabled$ = bindValue<boolean>(MOD, "FenceEnabled", false);
 export const vegetationDensity$ = bindValue<number>(MOD, "VegetationDensity", 100);
 export const furnitureDensity$ = bindValue<number>(MOD, "FurnitureDensity", 100);
 export const decorationEnabledMask$ = bindValue<number>(MOD, "DecorationEnabledMask", 0x2f);
@@ -26,7 +29,6 @@ export const decorationPlanReady$ = bindValue<boolean>(MOD, "DecorationPlanReady
 export const decorationBuildBusy$ = bindValue<boolean>(MOD, "DecorationBuildBusy", false);
 export const decorationBuildPresent$ = bindValue<boolean>(MOD, "DecorationBuildPresent", false);
 export const decorationSummary$ = bindValue<string>(MOD, "DecorationSummary", "");
-export const parkCount$ = bindValue<number>(MOD, "ParkCount", 0);
 export const locale$ = bindValue<string>(MOD, "Locale", "en");
 export const assetOptionsJson$ = bindValue<string>(MOD, "AssetOptionsJson", "{}");
 export const parkPaletteOptionsJson$ = bindValue<string>(MOD, "ParkPaletteOptionsJson", "[]");
@@ -40,9 +42,13 @@ export const generatePaths = () => trigger(MOD, "GeneratePaths");
 export const buildPaths = () => trigger(MOD, "BuildPaths");
 export const setPathType = (type: number) => trigger(MOD, "SetPathType", type);
 export const setSiteType = (type: number) => trigger(MOD, "SetSiteType", type);
+export const setPlazaLayout = (layout: number) => trigger(MOD, "SetPlazaLayout", layout);
+export const selectPlazaCenter = (name: string) =>
+  trigger(MOD, "SelectPlazaCenter", name);
+export const editPlazaArrangement = (command: string) =>
+  trigger(MOD, "EditPlazaArrangement", command);
 export const removeBuiltPaths = () => trigger(MOD, "RemoveBuiltPaths");
 export const generateDecorations = () => trigger(MOD, "GenerateDecorations");
-export const toggleFence = () => trigger(MOD, "ToggleFence");
 export const setVegetationDensity = (density: number) =>
   trigger(MOD, "SetVegetationDensity", density);
 export const setFurnitureDensity = (density: number) =>

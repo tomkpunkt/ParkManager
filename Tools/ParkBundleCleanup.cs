@@ -2,7 +2,6 @@ using Game;
 using Game.Areas;
 using Game.Common;
 using Game.Net;
-using Game.Prefabs;
 using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
@@ -19,19 +18,14 @@ namespace ParkManager.Tools
     /// </summary>
     public sealed partial class ParkBundleNetworkCleanupSystem : GameSystemBase
     {
-        private const string ParkPathPrefabName = "PedestrianPathWide01";
         private EntityQuery _deletedSurfaceQuery;
         private EntityQuery _requestQuery;
         private EntityQuery _memberQuery;
-        private EntityQuery _legacyOrphanNodeQuery;
-        private PrefabSystem _prefabSystem;
-        private int _nextOrphanScanFrame;
 
         [Preserve]
         protected override void OnCreate()
         {
             base.OnCreate();
-            _prefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
             _deletedSurfaceQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[]
@@ -64,21 +58,6 @@ namespace ParkManager.Tools
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
-            _legacyOrphanNodeQuery = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[]
-                {
-                    ComponentType.ReadOnly<Game.Net.Node>(),
-                    ComponentType.ReadOnly<PrefabRef>(),
-                    ComponentType.ReadOnly<ConnectedEdge>(),
-                },
-                None = new[]
-                {
-                    ComponentType.ReadOnly<ParkPathMember>(),
-                    ComponentType.ReadOnly<Deleted>(),
-                    ComponentType.ReadOnly<Temp>(),
-                },
-            });
         }
 
         [Preserve]
@@ -86,7 +65,6 @@ namespace ParkManager.Tools
         {
             CollectBulldozedSurface();
             DeleteNetworkEdges();
-            DeleteLegacyOrphanNodes();
         }
 
         private void CollectBulldozedSurface()
@@ -171,48 +149,6 @@ namespace ParkManager.Tools
             return 1;
         }
 
-        /// <summary>
-        /// Repairs nodes detached by 0.5 builds before the cleanup fix. A
-        /// permanent network node with this exact ParkManager path prefab and
-        /// no live edge cannot represent a usable player network element.
-        /// </summary>
-        private void DeleteLegacyOrphanNodes()
-        {
-            if (UnityEngine.Time.frameCount < _nextOrphanScanFrame) return;
-            _nextOrphanScanFrame = UnityEngine.Time.frameCount + 120;
-            if (_legacyOrphanNodeQuery.IsEmptyIgnoreFilter) return;
-
-            using var nodes = _legacyOrphanNodeQuery.ToEntityArray(Allocator.Temp);
-            var deleted = 0;
-            for (var i = 0; i < nodes.Length; i++)
-            {
-                var node = nodes[i];
-                var prefabEntity = EntityManager.GetComponentData<PrefabRef>(node)
-                    .m_Prefab;
-                if (!_prefabSystem.TryGetPrefab<PrefabBase>(prefabEntity,
-                        out var prefab)
-                    || prefab == null || !prefab.isBuiltin
-                    || prefab.name != ParkPathPrefabName
-                    || HasLiveEdge(node)) continue;
-                EntityManager.AddComponent<Deleted>(node);
-                deleted++;
-            }
-            if (deleted > 0)
-                Mod.Log.Info($"ParkManager removed {deleted} legacy orphan path "
-                    + "nodes left by an earlier bundle cleanup.");
-        }
-
-        private bool HasLiveEdge(Entity node)
-        {
-            var connected = EntityManager.GetBuffer<ConnectedEdge>(node, true);
-            for (var i = 0; i < connected.Length; i++)
-            {
-                var edge = connected[i].m_Edge;
-                if (edge != Entity.Null && EntityManager.Exists(edge)
-                    && !EntityManager.HasComponent<Deleted>(edge)) return true;
-            }
-            return false;
-        }
     }
 
     /// <summary>

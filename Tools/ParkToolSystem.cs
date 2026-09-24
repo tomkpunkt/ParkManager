@@ -61,9 +61,18 @@ namespace ParkManager.Tools
         internal void SetSiteKind(int value)
         {
             if (HasBuiltPaths || PathBuildBusy || DecorationBuildBusy) return;
-            _selectedSiteKind = value == (int)ProceduralSiteKind.Plaza
+            var nextKind = value == (int)ProceduralSiteKind.Plaza
                 ? ProceduralSiteKind.Plaza
                 : ProceduralSiteKind.Park;
+            if (_selectedSiteKind == nextKind) return;
+            _selectedSiteKind = nextKind;
+            _pedestrianPathPrefab = Unity.Entities.Entity.Null;
+            _pathPlan = null;
+            _plazaPlan = null;
+            _decorationPlan = null;
+            _pathPreview.Clear();
+            PublishPlannerState();
+            PublishDecorationState("Noch keine Ausstattung geplant.");
             _ui?.SetSiteType((int)_selectedSiteKind);
             PublishState(_selectedSiteKind == ProceduralSiteKind.Plaza
                 ? "Plaza als Flächentyp ausgewählt."
@@ -80,8 +89,8 @@ namespace ParkManager.Tools
             InitializeDecorationPlacement();
             InitializeSnappingTargets();
             ConfigureSnapping();
-            if (!RecoverPathBuildRecord())
-                PublishPathBuildState("Noch keine Testwege gebaut.");
+            PublishPlazaArrangement();
+            PublishPathBuildState("Noch kein Park in dieser Spielsitzung gebaut.");
         }
 
         [Preserve]
@@ -93,8 +102,6 @@ namespace ParkManager.Tools
             if (secondaryApplyAction != null) secondaryApplyAction.shouldBeEnabled = true;
             if (cancelAction != null) cancelAction.shouldBeEnabled = true;
             _ui.SetToolActive(true);
-            RecoverPathBuildRecord();
-            PublishWorkspaceState();
             MonitorExternalPathEdits(true);
             PublishState("Linksklick setzt Punkte; ersten Punkt anklicken zum Schließen.");
             Mod.Log.Info("ParkManager polygon tool activated.");
@@ -103,6 +110,11 @@ namespace ParkManager.Tools
         [Preserve]
         protected override void OnStopRunning()
         {
+            if (PathBuildBusy && _pathBuildPhase != PathBuildPhase.ClearRequested)
+                AbortPathBuild("Werkzeug während des Wegebaus verlassen.");
+            if (DecorationBuildBusy
+                && _decorationBuildPhase != DecorationBuildPhase.ClearRequested)
+                AbortDecorationBuild("Werkzeug während des Ausstattungsbaus verlassen.");
             _ui?.SetToolActive(false);
             base.OnStopRunning();
         }
@@ -450,6 +462,16 @@ namespace ParkManager.Tools
             }
 
             _pathPreview.Clear();
+            _buildIssues.Clear();
+            _preflightWarning = null;
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza)
+            {
+                PublishPathBuildState("Neue Plaza-Variante wird berechnet.");
+                GeneratePlazaPlan();
+                return;
+            }
+            _plazaPlan = null;
+            PublishPathBuildState("Neue Wegvariante wird berechnet.");
             var hub2 = FindInteriorHub();
             var entrancePoints = new List<float2>(_entrances.Count);
             for (var i = 0; i < _entrances.Count; i++)
@@ -564,7 +586,9 @@ namespace ParkManager.Tools
         {
             _entrances.Clear();
             _pathPlan = null;
+            _plazaPlan = null;
             _pathPreview.Clear();
+            _buildIssues.Clear();
             _decorationPlan = null;
             PublishDecorationState("Noch keine Ausstattung geplant.");
             PublishPlannerState();
@@ -687,9 +711,12 @@ namespace ParkManager.Tools
         }
 
         private void PublishState(string status)
-            => _ui?.SetPolygonState(_points.Count,
+        {
+            _ui?.SetPolygonState(_points.Count,
                 _points.Count >= 3 ? (float)Math.Abs(SignedArea()) : 0f,
                 _closed, IsValidPolygon(), status);
+            RefreshPlazaCenterChoices();
+        }
 
         private JobHandle Render(JobHandle inputDeps)
         {
@@ -699,7 +726,8 @@ namespace ParkManager.Tools
             ParkOverlay.Draw(buffer, _worldPoints, _closed, _hasHover, _hover,
                 CanClose(), _hoverPoint, _dragPoint, _hoverEdge, -1,
                 _plannerMode, _entrances, _hoverEntrance, _pathPreview,
-                _decorationPlan, LastSnap, HasSnapGuide, SnapGuide);
+                _decorationPlan, _selectedSiteKind == ProceduralSiteKind.Plaza,
+                _buildIssues, LastSnap, HasSnapGuide, SnapGuide);
             return deps;
         }
 

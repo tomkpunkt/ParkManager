@@ -32,6 +32,7 @@ namespace ParkManager.Tools
         Lamp = 8,
         Fence = 9,
         TrashBin = 10,
+        PlazaCenter = 11,
     }
 
     /// <summary>

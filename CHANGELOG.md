@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- Use the full measured mesh footprint for plaza center previews and fit checks;
+  reject building-like prefabs needing road access and composite prefabs whose
+  child meshes cannot be bounded reliably by the parent geometry.
+- Replace fixed plaza furniture mixes with a five-slot arrangement editor.
+  Each ordered slot selects its own asset; whole arrangements are mirrored,
+  validated and thinned together so placement never drops individual pieces.
+- Add four seeded plaza layouts: axial (with two or three matching centerpieces
+  on sufficiently long plots), radial, edge-oriented seating, and an open
+  plaza. The centerpiece chooser also permits no centerpiece in other layouts;
+  hidden pedestrian routes and furnishing clearances follow the chosen form.
+- Inset fence runs 0.20 m from the outline, using shared inset corners so
+  native fence-network segments stay connected while clearing neighbouring
+  buildings at the boundary.
+- Treat steep ground and nearby existing entities as advisory preflight findings
+  instead of blocking builds that previously worked. Only invalid terrain data
+  remains a pre-build stop; the panel shows the advisory and construction still
+  runs through the normal CS2 materialization and rollback flow.
+- Show path preflight failures with their coordinates directly in the Surface
+  panel; keep the error visible after an aborted build until a new variant is
+  generated.
+- Add a pre-build terrain and collision check for paths, park surface and
+  furnishing positions; show rejected locations in the overlay and report
+  their world coordinates without creating game entities.
+- Track creation definitions for each path/furnishing attempt and discard them
+  on abort. Failure logs now include phase, seed and expected/observed counts.
+- Remove obsolete park-count and standalone fence-toggle UI bindings, unused
+  ECS queries and recovery helpers, unused site-type persistence, old draft/receipt serialization, and the
+  pre-release orphan-node migration. Pre-release saves are no longer compatible.
+- Keep polygon, entrance and placement previews in the current game session
+  only. New park records no longer serialize draft points or entrances, and
+  loading a save starts with an empty editor instead of restoring a draft.
 - Build the selected park surface together with the pedestrian network in the
   Surface step, keep it when furnishings are removed, and hide surface prefabs
   without a dedicated UI preview from the picker.
@@ -10,7 +41,7 @@
 - Compact the outline workflow panel, replace the completed-park count with
   the live polygon area in square metres, and leave more of the map visible
   while drawing a new park.
-- Compact the path panel to the same height and add persisted park/plaza type,
+- Compact the path panel to the same height and add park/plaza type,
   path-width and thumbnail-based surface selection controls.
 - Give every furnishing category its own preview-tile enable checkbox, replace
   the separate fence switch, align preview and chooser heights, and add full-
@@ -19,8 +50,7 @@
   wide park count from the active park workflow.
 
 - Add a narrow/wide footpath selector to the Paths workflow step. The chosen
-  Vanilla pathway prefab controls its measured clearance and is persisted per
-  park in a backward-compatible standalone style component.
+  Vanilla pathway prefab controls its measured clearance during construction.
 - Resolve the narrow choice explicitly to Vanilla's `Pavement Path` and reject
   bike/bicycle pathway prefabs; align the compact path selector to the right of
   the Paths step.

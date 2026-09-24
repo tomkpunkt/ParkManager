@@ -6,6 +6,8 @@ using Game.Areas;
 using Game.Prefabs;
 using Game.Rendering;
 using ParkManager.Tools;
+using ParkManager.Geometry;
+using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Entities;
 using UnityEngine.Scripting;
@@ -25,6 +27,8 @@ namespace ParkManager.Assets
         Lamp,
         Fence,
         TrashBin,
+        PlazaCenter,
+        PlazaPlanter,
     }
 
     /// <summary>
@@ -135,6 +139,98 @@ namespace ParkManager.Assets
             return false;
         }
 
+        /// <summary>Resolves one explicit arrangement asset without falling back
+        /// to a different prefab when a selection disappears.</summary>
+        internal bool TryGetNamed(ParkAssetCategory category, string name,
+            out Entity prefab)
+        {
+            prefab = Entity.Null;
+            if (string.IsNullOrEmpty(name)
+                || !_choices.TryGetValue(category, out var choices)) return false;
+            for (var i = 0; i < choices.Count; i++)
+                if (string.Equals(choices[i].Name, name, StringComparison.Ordinal)
+                    && choices[i].Prefab != Entity.Null
+                    && EntityManager.Exists(choices[i].Prefab))
+                {
+                    prefab = choices[i].Prefab;
+                    return true;
+                }
+            return false;
+        }
+
+        /// <summary>
+        /// Compact picker data for the single central fountain/statue selector.
+        /// Only visible, named center-piece prefabs with an icon are included.
+        /// </summary>
+        internal string GetPlazaCenterOptionsJson(
+            IReadOnlyList<float2> polygon = null)
+        {
+            var builder = new StringBuilder("[");
+            if (_choices.TryGetValue(ParkAssetCategory.PlazaCenter,
+                out var choices))
+            {
+                var written = 0;
+                for (var i = 0; i < choices.Count
+                    && written < MaximumUiOptionsPerCategory; i++)
+                {
+                    if (!IsUsablePlazaCenter(choices[i], polygon)) continue;
+                    if (written++ > 0) builder.Append(',');
+                    AppendChoiceJson(builder, choices[i]);
+                }
+            }
+            return builder.Append(']').ToString();
+        }
+
+        /// <summary>
+        /// The selected fountain/statue name, including the deterministic
+        /// default used by TryGetSelected when the user has not picked one.
+        /// </summary>
+        internal string GetSelectedPlazaCenterName(
+            IReadOnlyList<float2> polygon = null)
+        {
+            TryGetFittingPlazaCenter(polygon, out _, out var name);
+            return name;
+        }
+
+        internal bool TryGetFittingPlazaCenter(IReadOnlyList<float2> polygon,
+            out Entity prefab, out string name)
+        {
+            prefab = Entity.Null;
+            name = string.Empty;
+            if (!_choices.TryGetValue(ParkAssetCategory.PlazaCenter,
+                out var choices)) return false;
+            _selected.TryGetValue(ParkAssetCategory.PlazaCenter,
+                out var selectedName);
+            if (string.IsNullOrEmpty(selectedName))
+                selectedName = ChooseDefault(ParkAssetCategory.PlazaCenter,
+                    choices);
+            for (var pass = 0; pass < 2; pass++)
+            for (var i = 0; i < choices.Count; i++)
+            {
+                var choice = choices[i];
+                if (pass == 0 && !string.Equals(choice.Name, selectedName,
+                    StringComparison.Ordinal)) continue;
+                if (pass == 1 && !string.IsNullOrEmpty(selectedName)
+                    && string.Equals(choice.Name, selectedName,
+                        StringComparison.Ordinal)) continue;
+                if (!IsUsablePlazaCenter(choice, polygon)) continue;
+                prefab = choice.Prefab;
+                name = choice.Name;
+                return true;
+            }
+            return false;
+        }
+
+        private bool IsUsablePlazaCenter(ParkAssetChoice choice,
+            IReadOnlyList<float2> polygon)
+        {
+            if (!IsUiChoice(choice) || choice.Prefab == Entity.Null
+                || !EntityManager.Exists(choice.Prefab)) return false;
+            if (polygon == null || polygon.Count < 3) return true;
+            return TryGetPlanarRadius(choice.Prefab, out var radius)
+                && PlazaPlanner.CanFitCenterpiece(polygon, radius);
+        }
+
         internal bool TryGetVariant(ParkAssetCategory category, uint selector,
             out Entity prefab, out string name)
         {
@@ -238,6 +334,22 @@ namespace ParkManager.Assets
             var bounds = EntityManager.GetComponentData<ObjectGeometryData>(prefab)
                 .m_Bounds;
             radius = Math.Max(Math.Abs(bounds.min.z), Math.Abs(bounds.max.z));
+            return radius > 0.01f && !float.IsNaN(radius)
+                && !float.IsInfinity(radius);
+        }
+
+        /// <summary>Maximum horizontal extent of a plaza centerpiece mesh.</summary>
+        internal bool TryGetPlanarRadius(Entity prefab, out float radius)
+        {
+            radius = 0f;
+            if (prefab == Entity.Null || !EntityManager.Exists(prefab)
+                || !EntityManager.HasComponent<ObjectGeometryData>(prefab))
+                return false;
+            var bounds = EntityManager.GetComponentData<ObjectGeometryData>(prefab)
+                .m_Bounds;
+            radius = Math.Max(
+                Math.Max(Math.Abs(bounds.min.x), Math.Abs(bounds.max.x)),
+                Math.Max(Math.Abs(bounds.min.z), Math.Abs(bounds.max.z)));
             return radius > 0.01f && !float.IsNaN(radius)
                 && !float.IsInfinity(radius);
         }
@@ -363,9 +475,17 @@ namespace ParkManager.Assets
                         && !ContainsAny(lowerPlant, "placeholder", "stump", "dead",
                             "planter", "flowerpot", "flower pot", "raisedbed",
                             "raised bed", "plantbox", "plant box"))
-                        Add(EntityManager.HasComponent<TreeData>(entity)
-                            ? ParkAssetCategory.Tree : ParkAssetCategory.Bush,
-                            name, entity);
+                    {
+                        if (EntityManager.HasComponent<TreeData>(entity))
+                            Add(ParkAssetCategory.Tree, name, entity);
+                        else
+                        {
+                            Add(ParkAssetCategory.Bush, name, entity);
+                            // The Plaza chooser uses the same vetted shrub
+                            // pool as parks, plus compatible planter props.
+                            Add(ParkAssetCategory.PlazaPlanter, name, entity);
+                        }
+                    }
                 }
 
                 // Industrial chain-link and similar fences are real network
@@ -382,7 +502,7 @@ namespace ParkManager.Assets
                 if (!IsVisibleObjectPrefab(entity, prefab)
                     || ContainsAny(lower, "placeholder", "random", "source"))
                     continue;
-                if (ContainsAny(lower, "bench", "seat", "bank"))
+                if (IsBenchAssetName(lower))
                     Add(ParkAssetCategory.Bench, name, entity);
                 if (ContainsAny(lower, "lamp", "light", "lantern"))
                     Add(ParkAssetCategory.Lamp, name, entity);
@@ -392,6 +512,13 @@ namespace ParkManager.Assets
                     "trash can", "wastebin", "waste bin", "garbagebin",
                     "garbage bin", "litterbin", "litter bin"))
                     Add(ParkAssetCategory.TrashBin, name, entity);
+                if (ContainsAny(lower, "planter", "flowerbed", "flower bed",
+                    "flowerpot", "flower pot", "raisedbed", "raised bed",
+                    "plantbox", "plant box")
+                    && !ContainsAny(lower, "placeholder", "random", "source"))
+                    Add(ParkAssetCategory.PlazaPlanter, name, entity);
+                if (IsPlazaCenterPrefab(entity, prefab, lower))
+                    Add(ParkAssetCategory.PlazaCenter, name, entity);
             }
 
 
@@ -427,6 +554,7 @@ namespace ParkManager.Assets
                 + $"Lampen {_choices[ParkAssetCategory.Lamp].Count} · "
                 + $"Zäune {_choices[ParkAssetCategory.Fence].Count} · "
                 + $"Mülleimer {_choices[ParkAssetCategory.TrashBin].Count} · "
+                + $"Plazazentren {_choices[ParkAssetCategory.PlazaCenter].Count} · "
                 + $"Parkpaletten {_parkPalettes.Count}";
             Mod.Log.Info("ParkManager 0.4 asset catalog: " + _summary);
             foreach (ParkAssetCategory category in Enum.GetValues(
@@ -446,6 +574,39 @@ namespace ParkManager.Assets
                 && EntityManager.HasComponent<ObjectGeometryData>(entity)
                 && !EntityManager.HasComponent<PlaceholderObjectData>(entity)
                 && !EntityManager.HasBuffer<PlaceholderObjectElement>(entity);
+        }
+
+        private bool IsPlazaCenterPrefab(Entity entity, PrefabBase prefab,
+            string lowerName)
+        {
+            // Center pieces must be real, renderable object prefabs with a UI
+            // icon. Name matching alone is too broad: the game also contains
+            // fountain effects, plant assets and bundled prop variants.
+            if (!(prefab is StaticObjectPrefab)
+                || !IsVisibleObjectPrefab(entity, prefab)
+                // Buildings may demand a road connection even when their
+                // display name suggests a decorative statue or fountain.
+                || prefab is BuildingPrefab
+                || EntityManager.HasComponent<BuildingData>(entity)
+                || EntityManager.HasComponent<PlantData>(entity)
+                // Parent geometry bounds do not include independently
+                // positioned subobjects; without a combined footprint their
+                // preview could claim a much smaller size than the result.
+                || prefab.TryGet<ObjectSubObjects>(out var subObjects)
+                    && subObjects?.m_SubObjects != null
+                    && subObjects.m_SubObjects.Length > 0
+                || ContainsAny(lowerName, "placeholder", "random", "source",
+                    "effect", "particle", "spray", "splash", "decal",
+                    "planter", "flowerpot", "flower pot", "raisedbed",
+                    "raised bed", "plantbox", "plant box", "bench", "seat",
+                    "lamp", "light", "trash", "bin", "fence", "railing",
+                    "sign", "poster", "icon", "shadow", "broken", "ruin"))
+                return false;
+
+            var isFountain = lowerName.Contains("fountain");
+            var isStatue = lowerName.Contains("statue");
+            return (isFountain || isStatue)
+                && !string.IsNullOrWhiteSpace(GetIcon(prefab));
         }
 
         private void ScanVanillaParkPalettes(NativeArray<Entity> prefabs)
@@ -555,7 +716,7 @@ namespace ParkManager.Assets
                 category = ParkAssetCategory.Bush;
                 return true;
             }
-            if (ContainsAny(lower, "bench", "seat", "bank"))
+            if (IsBenchAssetName(lower))
                 category = ParkAssetCategory.Bench;
             else if (ContainsAny(lower, "lightpole", "gardenlight", "lamp",
                 "lantern")) category = ParkAssetCategory.Lamp;
@@ -576,6 +737,17 @@ namespace ParkManager.Assets
             for (var i = choices.Count - 1; i > 0; i--)
                 if (string.Equals(choices[i].Name, choices[i - 1].Name,
                     StringComparison.OrdinalIgnoreCase)) choices.RemoveAt(i);
+        }
+
+        private static bool IsBenchAssetName(string lower)
+        {
+            // "bank" alone also matches advertised financial brands; those
+            // A-stands previously appeared as benches in both choosers.
+            if (!ContainsAny(lower, "bench", "seat", "parkbank",
+                    "gardenbank", "sitzbank", "streetbank")) return false;
+            return !ContainsAny(lower, "advert", "billboard", "poster",
+                "banner", "display", "sign", "adstand", "astand",
+                "commercial", "logo", "screen", "adboard");
         }
 
         private void Add(ParkAssetCategory category, string name, Entity prefab)
@@ -641,6 +813,12 @@ namespace ParkManager.Assets
                     if (lower.Contains("trash") || lower.Contains("waste")) score += 50;
                     if (lower.Contains("park")) score += 25;
                 }
+                if (category == ParkAssetCategory.PlazaCenter)
+                {
+                    if (lower.Contains("fountain")) score += 100;
+                    if (lower.Contains("statue")) score += 80;
+                    if (lower.Contains("plaza") || lower.Contains("central")) score += 30;
+                }
                 if (lower.Contains("placeholder") || lower.Contains("invisible")) score -= 200;
                 if (score <= bestScore) continue;
                 bestScore = score;
@@ -693,7 +871,8 @@ namespace ParkManager.Assets
 
         private static bool IsMultiCategory(ParkAssetCategory category)
             => category == ParkAssetCategory.Tree
-                || category == ParkAssetCategory.Bush;
+                || category == ParkAssetCategory.Bush
+                || category == ParkAssetCategory.PlazaPlanter;
 
         private static void AppendChoiceJson(StringBuilder builder,
             ParkAssetChoice choice)
@@ -731,6 +910,8 @@ namespace ParkManager.Assets
             World.GetOrCreateSystemManaged<ParkManagerUISystem>()
                 .SetAssetCatalogState(_ready, _summary, _optionsJson,
                     _parkPaletteOptionsJson, _selectedParkPalette);
+            World.GetOrCreateSystemManaged<ParkToolSystem>()
+                .RefreshPlazaCenterChoices(true);
         }
 
         private static string Escape(string value) => (value ?? string.Empty)

@@ -73,10 +73,10 @@ retains group cleanup through serializable `ParkPathMember` relations, records a
 geometry fingerprint and reports externally moved or deleted members as
 manually edited. It will not silently regenerate over those changes.
 
-Version 0.5 adds a versioned build receipt containing the park outline,
-entrances, path/furnishing seeds and fence/build state. A loaded save can
-reconstruct the locked planner and its deterministic previews. **Finish park**
-now detaches that persisted record from the editor without deleting its Vanilla
+The current development build keeps outline, entrances and generated previews
+only for the current game session. Loading a save starts with an empty editor;
+an unfinished workflow must be completed before leaving that session. **Finish park**
+detaches the persistent park record from the editor without deleting its Vanilla
 entities and immediately starts a fresh outline, so several independently
 grouped parks can coexist in one city. Completed records become closed bundles
 and are deliberately not reopened in the editor. Every generated path, plant

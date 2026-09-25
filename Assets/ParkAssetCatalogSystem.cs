@@ -222,6 +222,48 @@ namespace ParkManager.Assets
             return false;
         }
 
+        /// <summary>
+        /// Names offered by the UI picker of one category, in picker order.
+        /// Plaza centerpieces are limited to those fitting the polygon.
+        /// </summary>
+        internal List<string> GetUiChoiceNames(ParkAssetCategory category,
+            IReadOnlyList<float2> polygon = null)
+        {
+            var result = new List<string>();
+            if (!_choices.TryGetValue(category, out var choices)) return result;
+            for (var i = 0; i < choices.Count
+                && result.Count < MaximumUiOptionsPerCategory; i++)
+            {
+                var usable = category == ParkAssetCategory.PlazaCenter
+                    ? IsUsablePlazaCenter(choices[i], polygon)
+                    : IsUiChoice(choices[i]);
+                if (usable) result.Add(choices[i].Name);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Applies the assets of a rolled plaza variant with one UI update.
+        /// Empty names keep the current selection. Unlike <see cref="Select"/>
+        /// this does not refresh the decoration plan; the caller replans.
+        /// </summary>
+        internal void SelectPlazaVariantAssets(string surface, string fence,
+            string center)
+        {
+            SelectIfAvailable(ParkAssetCategory.Surface, surface);
+            SelectIfAvailable(ParkAssetCategory.Fence, fence);
+            SelectIfAvailable(ParkAssetCategory.PlazaCenter, center);
+            Publish();
+        }
+
+        private void SelectIfAvailable(ParkAssetCategory category, string name)
+        {
+            if (string.IsNullOrEmpty(name)
+                || !_choices.TryGetValue(category, out var choices)) return;
+            if (choices.FindIndex(choice => string.Equals(choice.Name, name,
+                StringComparison.Ordinal)) >= 0) _selected[category] = name;
+        }
+
         private bool IsUsablePlazaCenter(ParkAssetChoice choice,
             IReadOnlyList<float2> polygon)
         {

@@ -11,6 +11,7 @@
     <Compile Include="ModLogStub.cs" />
     <Compile Include="../../Geometry/PlazaPlan.cs" Link="PlazaPlan.cs" />
     <Compile Include="../../Geometry/PlazaPlanner.cs" Link="PlazaPlanner.cs" />
+    <Compile Include="../../Geometry/PlazaVariantRoller.cs" Link="PlazaVariantRoller.cs" />
     <Compile Include="../../Geometry/ParkPathPlan.cs" Link="ParkPathPlan.cs" />
     <Compile Include="../../Geometry/ParkPathPlanner.cs" Link="ParkPathPlanner.cs" />
     <Compile Include="../../Geometry/ParkDecorationPlan.cs" Link="ParkDecorationPlan.cs" />

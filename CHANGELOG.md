@@ -10,6 +10,19 @@
 
 ### Detailed changes
 
+- Plaza furniture placed around the center follows a stadium (capsule) ring
+  around the outer centerpieces when two mirrored or three main-axis
+  centerpieces are used, instead of a circle around the plaza center.
+  Arrangements stay evenly spaced by arc length and face the centerpiece axis.
+- "New variant" on a plaza now rolls every user-adjustable setting from a
+  seed: centerpiece (or none), centerpiece arrangement and spacing,
+  furniture placement and spacing, surface, fence, arrangement slots and
+  density. The controls show the rolled values and can be refined manually.
+  "New placement" in the furnishing step rolls only the arrangement and
+  density. Rolled arrangements are mirror-symmetric, and every slot of one
+  kind uses the same asset. The first plaza design still uses the current
+  settings.
+
 - Use the full measured mesh footprint for plaza center previews and fit checks;
   reject building-like prefabs needing road access and composite prefabs whose
   child meshes cannot be bounded reliably by the parent geometry.

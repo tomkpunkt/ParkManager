@@ -126,25 +126,29 @@ for (var index = 0; index < count; index++)
             .Select(group => group.ToArray()).ToArray();
         if (groups.Length > 1)
         {
-            var circleCenter = (plan.Furniture[0].Position
-                + plan.Furniture[1].Position) * 0.5f;
-            var angles = groups.Select(group => {
+            var anchors = groups.Select(group => {
                 var anchor = float2.zero;
                 for (var i = 0; i < group.Length; i += 2)
                     anchor += group[i].Position;
-                anchor /= group.Length / 2;
-                var delta = anchor - circleCenter;
-                var angle = math.atan2(delta.y, delta.x);
-                if (angle < 0f) angle += math.PI;
-                if (angle >= math.PI) angle -= math.PI;
-                return angle;
-            }).OrderBy(angle => angle).ToArray();
-            var expectedStep = math.PI / groups.Length;
-            for (var i = 0; i < angles.Length; i++)
+                return anchor / (group.Length / 2);
+            }).ToArray();
+            var stadiumRadius = math.distance(anchors[0],
+                NearestOnStadiumAxis(anchors[0]));
+            if (anchors.Any(anchor => math.abs(math.distance(anchor,
+                    NearestOnStadiumAxis(anchor)) - stadiumRadius) > 0.01f))
+                errors.Add("Arrangements do not share one stadium ring");
+            var (axisStart, axisEnd) = StadiumAxis();
+            var extent = math.distance(axisStart, axisEnd) * 0.5f;
+            var halfPerimeter = math.PI * stadiumRadius + extent * 2f;
+            var positions = anchors.Select(anchor =>
+                StadiumParameter(anchor, stadiumRadius) % halfPerimeter)
+                .OrderBy(value => value).ToArray();
+            var expectedStep = halfPerimeter / groups.Length;
+            for (var i = 0; i < positions.Length; i++)
             {
-                var next = i + 1 < angles.Length
-                    ? angles[i + 1] : angles[0] + math.PI;
-                if (math.abs(next - angles[i] - expectedStep) > 0.01f)
+                var next = i + 1 < positions.Length
+                    ? positions[i + 1] : positions[0] + halfPerimeter;
+                if (math.abs(next - positions[i] - expectedStep) > 0.02f)
                     errors.Add("Circular arrangements are not evenly spaced");
             }
         }
@@ -196,11 +200,53 @@ for (var index = 0; index < count; index++)
     void CheckFacingCenter(PlazaFurniturePlacement item)
     {
         if (item.Kind == PlazaFurnitureKind.Bush) return;
-        var midpoint = (plan.Furniture[0].Position + plan.Furniture[1].Position) * 0.5f;
-        var towardCenter = math.normalizesafe(midpoint - item.Position);
+        var towardCenter = math.normalizesafe(
+            NearestOnStadiumAxis(item.Position) - item.Position);
         var forward = new float2(math.sin(item.Rotation), math.cos(item.Rotation));
         if (math.dot(forward, towardCenter) < 0.75f)
             errors.Add($"{item.Kind} faces away from its arrangement center");
+    }
+    (float2, float2) StadiumAxis()
+    {
+        if (plan.Centerpieces.Count > 1)
+            return (plan.Centerpieces[0].Position,
+                plan.Centerpieces[plan.Centerpieces.Count - 1].Position);
+        var midpoint = (plan.Furniture[0].Position + plan.Furniture[1].Position) * 0.5f;
+        return (midpoint, midpoint);
+    }
+    float2 NearestOnStadiumAxis(float2 p)
+    {
+        var (a, b) = StadiumAxis();
+        var ab = b - a;
+        var t = math.lengthsq(ab) < 0.0001f ? 0f
+            : math.clamp(math.dot(p - a, ab) / math.lengthsq(ab), 0f, 1f);
+        return a + ab * t;
+    }
+    // Counter-clockwise arc length from the +axis tip, matching the planner.
+    float StadiumParameter(float2 p, float r)
+    {
+        var (a, b) = StadiumAxis();
+        var center = (a + b) * 0.5f;
+        var extent = math.distance(a, b) * 0.5f;
+        var axis = extent > 0.001f ? (b - a) / (extent * 2f) : new float2(1f, 0f);
+        var normal = new float2(-axis.y, axis.x);
+        var u = math.dot(p - center, axis);
+        var v = math.dot(p - center, normal);
+        var quarter = math.PI * 0.5f * r;
+        var perimeter = 4f * quarter + 4f * extent;
+        if (u > extent)
+        {
+            var angle = math.atan2(v, u - extent);
+            return angle >= 0f ? angle * r : perimeter + angle * r;
+        }
+        if (u < -extent)
+        {
+            var angle = math.atan2(v, u + extent);
+            if (angle < 0f) angle += 2f * math.PI;
+            return quarter + 2f * extent + (angle - math.PI * 0.5f) * r;
+        }
+        return v > 0f ? quarter + (extent - u)
+            : 3f * quarter + 2f * extent + (u + extent);
     }
     void CheckFacingBoundary(PlazaFurniturePlacement item)
     {
@@ -271,6 +317,85 @@ var cappedCircle = PlazaPlanner.Generate(openSquare,
     true, fiveItemArrangement);
 if (cappedCircle.Furniture.Count != 60)
     failures.Add("Furniture cap did not yield six complete circular pairs");
+foreach (var axisPlacement in new[] { PlazaCenterPlacementMode.Mirrored,
+    PlazaCenterPlacementMode.MainAxis })
+{
+    var stadiumPlan = PlazaPlanner.Generate(openSquare,
+        Array.Empty<float2>(), 2.5f, axisPlacement,
+        PlazaArrangementPlacementMode.AroundCenter, 40f, 4f, 125, 1,
+        true, regularArrangement);
+    var ends = (stadiumPlan.Centerpieces[0].Position,
+        stadiumPlan.Centerpieces[^1].Position);
+    var stadiumAxis = math.normalizesafe(ends.Item2 - ends.Item1);
+    var stadiumMid = (ends.Item1 + ends.Item2) * 0.5f;
+    var halfStraight = math.distance(ends.Item1, ends.Item2) * 0.5f;
+    if (stadiumPlan.Centerpieces.Count < 2
+        || stadiumPlan.Furniture.Count != 12
+        || !stadiumPlan.Furniture.Any(item => math.abs(math.dot(
+            item.Position - stadiumMid, stadiumAxis)) < halfStraight - 1f))
+        failures.Add($"{axisPlacement} did not arrange furniture on a stadium");
+}
+var rollCenters = new[] { "Fountain A", "Statue B", "Fountain C" };
+var rollSurfaces = new[] { "Grass", "Pavement" };
+var rollFences = new[] { "Fence Low", "Fence High" };
+var rollAssets = new IReadOnlyList<string>[] {
+    new[] { "Bench A", "Bench B" }, new[] { "Lamp A" },
+    Array.Empty<string>(), new[] { "Tree A", "Tree B" }, new[] { "Planter A" } };
+var rolledCenterNone = false;
+var rolledFences = new HashSet<string>();
+var rolledLengths = new HashSet<int>();
+for (var rollSeed = 1; rollSeed <= 500; rollSeed++)
+{
+    var layout = PlazaVariantRoller.RollLayout(rollSeed, rollCenters,
+        rollSurfaces, rollFences);
+    var replayLayout = PlazaVariantRoller.RollLayout(rollSeed, rollCenters,
+        rollSurfaces, rollFences);
+    var furnishing = PlazaVariantRoller.RollFurnishing(rollSeed, rollAssets);
+    var replayFurnishing = PlazaVariantRoller.RollFurnishing(rollSeed, rollAssets);
+    if (JsonSerializer.Serialize(DescribeLayout(layout))
+            != JsonSerializer.Serialize(DescribeLayout(replayLayout))
+        || JsonSerializer.Serialize(DescribeFurnishing(furnishing))
+            != JsonSerializer.Serialize(DescribeFurnishing(replayFurnishing)))
+        failures.Add($"Variant seed {rollSeed}: non-deterministic roll");
+    if (layout.CenterpieceSpacing < 5 || layout.CenterpieceSpacing > 60
+        || layout.ArrangementSpacing < 0 || layout.ArrangementSpacing > 20
+        || (int)layout.CenterPlacement > 2 || (int)layout.ArrangementPlacement > 1
+        || furnishing.Density < 25 || furnishing.Density > 200
+        || furnishing.Density % 25 != 0)
+        failures.Add($"Variant seed {rollSeed}: value outside its UI range");
+    if (layout.CenterAsset.Length > 0 && !rollCenters.Contains(layout.CenterAsset)
+        || !rollSurfaces.Contains(layout.SurfaceAsset)
+        || layout.FenceAsset.Length > 0 && !rollFences.Contains(layout.FenceAsset))
+        failures.Add($"Variant seed {rollSeed}: asset not offered by the picker");
+    rolledCenterNone |= layout.CenterAsset.Length == 0;
+    rolledFences.Add(layout.FenceAsset);
+    var items = furnishing.Arrangement;
+    rolledLengths.Add(items.Count);
+    if (items.Count < 1 || items.Count > PlazaVariantRoller.MaximumArrangementItems)
+        failures.Add($"Variant seed {rollSeed}: arrangement length {items.Count}");
+    for (var i = 0; i < items.Count; i++)
+    {
+        var mirror = items[items.Count - 1 - i];
+        if (items[i].Kind != mirror.Kind || items[i].AssetName != mirror.AssetName)
+            failures.Add($"Variant seed {rollSeed}: arrangement is not symmetric");
+        if (items[i].Kind == PlazaFurnitureKind.TrashBin
+            || !rollAssets[(int)items[i].Kind].Contains(items[i].AssetName))
+            failures.Add($"Variant seed {rollSeed}: arrangement asset unavailable");
+    }
+}
+if (!rolledCenterNone || !rolledFences.Contains("") || rolledFences.Count < 3
+    || rolledLengths.Count != PlazaVariantRoller.MaximumArrangementItems)
+    failures.Add("Variant rolls do not cover the optional settings");
+var emptyLayout = PlazaVariantRoller.RollLayout(7, Array.Empty<string>(),
+    Array.Empty<string>(), Array.Empty<string>());
+var emptyFurnishing = PlazaVariantRoller.RollFurnishing(7,
+    Array.Empty<IReadOnlyList<string>>());
+if (emptyLayout.CenterAsset != "" || emptyLayout.SurfaceAsset != ""
+    || emptyLayout.FenceAsset != "" || emptyFurnishing.Arrangement.Count == 0
+    || emptyFurnishing.Arrangement.Any(item => item.Kind != PlazaFurnitureKind.Bench
+        || item.AssetName != ""))
+    failures.Add("Variant roll without catalog choices is not a safe default");
+
 var report = new { count, failed = failures.Count, failures, cases };
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 File.WriteAllText(output, JsonSerializer.Serialize(report,
@@ -278,6 +403,15 @@ File.WriteAllText(output, JsonSerializer.Serialize(report,
 Console.WriteLine($"{count} Plaza variants; {failures.Count} with findings. {Path.GetFullPath(output)}");
 foreach (var failure in failures.Take(20)) Console.WriteLine(failure);
 if (failures.Count > 0) Environment.ExitCode = 1;
+
+static object DescribeLayout(PlazaLayoutVariant layout) => new {
+    layout.CenterAsset, centerPlacement = (int)layout.CenterPlacement,
+    layout.CenterpieceSpacing, arrangementPlacement = (int)layout.ArrangementPlacement,
+    layout.ArrangementSpacing, layout.SurfaceAsset, layout.FenceAsset };
+
+static object DescribeFurnishing(PlazaFurnishingVariant furnishing) => new {
+    furnishing.Density,
+    items = furnishing.Arrangement.Select(item => $"{item.Kind}:{item.AssetName}").ToArray() };
 
 static object Describe(PlazaPlan plan) => new {
     centers = plan.Centerpieces.Select(x => new { x = x.Position.x,

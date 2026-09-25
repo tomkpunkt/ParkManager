@@ -142,6 +142,10 @@ namespace ParkManager.Tools
             if (_selectedSiteKind == ProceduralSiteKind.Plaza
                 && _plazaPlan != null)
             {
+                // The surface step is already built, so only the furnishing
+                // settings are rolled for a new placement.
+                if (_decorationPlan != null)
+                    RollPlazaFurnishing(NewPlazaVariantSeed());
                 ReplanPlazaArrangement();
                 return;
             }

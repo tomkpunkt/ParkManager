@@ -468,6 +468,9 @@ namespace ParkManager.Tools
             if (_selectedSiteKind == ProceduralSiteKind.Plaza)
             {
                 PublishPathBuildState("Neue Plaza-Variante wird berechnet.");
+                // The first design uses the current settings; every further
+                // request is a new variant with rolled settings.
+                if (_plazaPlan != null) RollPlazaVariant(NewPlazaVariantSeed());
                 GeneratePlazaPlan();
                 return;
             }

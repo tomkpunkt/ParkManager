@@ -37,6 +37,15 @@ internal static class MockServer
         public int EnabledMask { get; set; } = 0x2f;
         public ArrangementDto[] Arrangement { get; set; } = Array.Empty<ArrangementDto>();
     }
+    private sealed class PlazaVariantRequest
+    {
+        public int Seed { get; set; } = 1;
+        public bool FurnishingOnly { get; set; }
+        public string[] Centers { get; set; } = Array.Empty<string>();
+        public string[] Surfaces { get; set; } = Array.Empty<string>();
+        public string[] Fences { get; set; } = Array.Empty<string>();
+        public string[][] AssetsByKind { get; set; } = Array.Empty<string[]>();
+    }
 
     internal static async Task Run(int port)
     {
@@ -55,8 +64,36 @@ internal static class MockServer
                     PropertyNameCaseInsensitive = true });
             return Results.Json(Plan(input ?? new PlanRequest()));
         });
+        app.MapPost("/api/plaza-variant", async (HttpRequest request) =>
+        {
+            var input = await JsonSerializer.DeserializeAsync<PlazaVariantRequest>(
+                request.Body, new JsonSerializerOptions {
+                    PropertyNameCaseInsensitive = true });
+            return Results.Json(PlazaVariant(input ?? new PlazaVariantRequest()));
+        });
         Console.WriteLine($"ParkManager live mock: http://localhost:{port}/");
         await app.RunAsync();
+    }
+
+    private static object PlazaVariant(PlazaVariantRequest request)
+    {
+        var furnishing = PlazaVariantRoller.RollFurnishing(request.Seed,
+            request.AssetsByKind);
+        var arrangement = furnishing.Arrangement.Select(item => new {
+            kind = (int)item.Kind, name = item.AssetName }).ToArray();
+        if (request.FurnishingOnly)
+            return new { density = furnishing.Density, arrangement };
+        var layout = PlazaVariantRoller.RollLayout(request.Seed,
+            request.Centers, request.Surfaces, request.Fences);
+        return new {
+            density = furnishing.Density, arrangement,
+            center = layout.CenterAsset,
+            centerPlacement = (int)layout.CenterPlacement,
+            centerpieceSpacing = layout.CenterpieceSpacing,
+            arrangementPlacement = (int)layout.ArrangementPlacement,
+            arrangementSpacing = layout.ArrangementSpacing,
+            surface = layout.SurfaceAsset, fence = layout.FenceAsset,
+        };
     }
 
     private static object Plan(PlanRequest request)

@@ -61,10 +61,10 @@ export const trigger = (scope: string, action: string, payload?: any) => {
     case 'SetPlazaArrangementSpacing': set('PlazaArrangementSpacing', payload); replanPlaza(); break;
     case 'SetPlazaFenceEnabled': set('PlazaFenceEnabled', payload); replanPlaza(); break;
     case 'SelectPlazaCenter': set('PlazaCenterSelected', payload); replanPlaza(); break;
-    case 'GeneratePaths': if (get('SiteType') !== 1) seed++; set('PathPlanReady', true); if (get('SiteType') === 1) set('DecorationPlanReady', true); set('PathBuildSummary', get('SiteType') === 1 ? 'Plaza-Regeln angewendet' : `Mock-Seed ${seed}`); recalculate(); break;
+    case 'GeneratePaths': if (get('SiteType') === 1) { generatePlaza(); break; } seed++; set('PathPlanReady', true); set('PathBuildSummary', `Mock-Seed ${seed}`); recalculate(); break;
     case 'BuildPaths': set('PathBuildPresent', true); break;
     case 'RemoveBuiltPaths': set('PathBuildPresent', false); set('DecorationBuildPresent', false); set('DecorationPlanReady', false); break;
-    case 'GenerateDecorations': seed++; set('DecorationPlanReady', true); set('DecorationSummary', `Mock-Seed ${seed}`); recalculate(); break;
+    case 'GenerateDecorations': seed++; if (get('SiteType') === 1 && get('DecorationPlanReady')) { void rollPlazaVariant(true); break; } set('DecorationPlanReady', true); set('DecorationSummary', `Mock-Seed ${seed}`); recalculate(); break;
     case 'BuildDecorations': set('DecorationBuildPresent', true); break;
     case 'RemoveBuiltDecorations': set('DecorationBuildPresent', false); break;
     case 'FinishPark': scenario('empty'); break;
@@ -87,6 +87,50 @@ function editArrangement(command: string) {
   if (action === 'move' && items[index] && items[Number(value)])
     [items[index], items[Number(value)]] = [items[Number(value)], items[index]];
   set('PlazaArrangementJson', JSON.stringify(items)); replanPlaza();
+}
+// Same order as PlazaFurnitureKind: Bench, Lamp, TrashBin, Tree, Bush.
+const arrangementKeys = ['bench', 'lamp', 'trashbin', 'tree', 'plazaplanter'];
+function generatePlaza() {
+  const reroll = get<boolean>('PathPlanReady');
+  set('PathPlanReady', true); set('DecorationPlanReady', true);
+  if (!reroll) { set('PathBuildSummary', 'Plaza-Regeln angewendet'); recalculate(); return; }
+  seed++; void rollPlazaVariant(false);
+}
+/** Rolls plaza settings with the production PlazaVariantRoller. */
+async function rollPlazaVariant(furnishingOnly: boolean) {
+  const choices = JSON.parse(get<string>('AssetOptionsJson') || '{}');
+  const names = (key: string): string[] =>
+    (choices[key]?.options ?? []).map((option: { name: string }) => option.name);
+  const centers = JSON.parse(get<string>('PlazaCenterOptionsJson') || '[]')
+    .map((option: { name: string }) => option.name);
+  try {
+    const response = await fetch('/api/plaza-variant', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed, furnishingOnly, centers,
+        surfaces: names('surface'), fences: names('fence'),
+        assetsByKind: arrangementKeys.map(names) }) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const variant = await response.json();
+    set('FurnitureDensity', variant.density);
+    set('PlazaArrangementJson', JSON.stringify(variant.arrangement));
+    if (!furnishingOnly) {
+      set('PlazaCenterSelected', variant.center || '__none__');
+      set('PlazaCenterPlacement', variant.centerPlacement);
+      set('PlazaCenterpieceSpacing', variant.centerpieceSpacing);
+      set('PlazaArrangementPlacement', variant.arrangementPlacement);
+      set('PlazaArrangementSpacing', variant.arrangementSpacing);
+      set('PlazaFenceEnabled', !!variant.fence);
+      if (variant.surface && choices.surface) choices.surface.selected = variant.surface;
+      if (variant.fence && choices.fence) choices.fence.selected = variant.fence;
+      set('AssetOptionsJson', JSON.stringify(choices));
+      set('PathBuildSummary', `Plaza-Variante · Seed ${seed}`);
+    } else set('DecorationSummary', `Plaza-Ausstattung · Seed ${seed}`);
+    set('DecorationPlanReady', true);
+    recalculate();
+  } catch (error) {
+    set('PathBuildStatus', 'error');
+    set('PathBuildSummary', `Plaza-Variante nicht erreichbar: ${error}`);
+  }
 }
 function replanPlaza() {
   if (get('SiteType') !== 1 || !get('PathPlanReady')) return;

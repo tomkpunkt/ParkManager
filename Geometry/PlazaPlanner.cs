@@ -196,9 +196,7 @@ namespace ParkManager.Geometry
             PlazaArrangementPlacementMode placementMode, float spacing,
             int arrangementId)
         {
-            var tangent = math.normalizesafe(new float2(
-                -(anchor.Position - center).y,
-                (anchor.Position - center).x), new float2(1f, 0f));
+            var tangent = anchor.Tangent;
             var width = 0f;
             for (var i = 0; i < arrangement.Count; i++)
                 width += arrangement[i].FootprintRadius * 2f;
@@ -343,30 +341,44 @@ namespace ParkManager.Geometry
             var availableRadius = math.min(majorSpan, minorSpan) * 0.5f
                 - arrangementWidth * 0.5f - maximumRadius;
             var ringStep = math.max(8f, arrangementWidth + 4f);
+            // Several centerpieces on the main axis are enclosed by a
+            // stadium; a single centerpiece degenerates it to a circle.
+            var axis = new float2(1f, 0f);
+            var extent = 0f;
+            if (centerpieces.Count > 1)
+            {
+                var span = centerpieces[centerpieces.Count - 1].Position
+                    - centerpieces[0].Position;
+                extent = math.length(span) * 0.5f;
+                if (extent > 0.001f) axis = span / (extent * 2f);
+                else extent = 0f;
+            }
             // Try a complete, evenly distributed ring. When capacity or
-            // geometry rules one out, recompute every angle for fewer pairs
-            // instead of keeping a prefix of a denser ring.
+            // geometry rules one out, recompute every position for fewer
+            // pairs instead of keeping a prefix of a denser ring.
             for (var pairs = desiredPairs; pairs >= 1; pairs--)
             {
-                var angleStep = math.PI / pairs;
                 for (var ring = 0; ring < 3; ring++)
                 {
                     var distance = innerRadius + ring * ringStep;
                     if (distance > availableRadius + arrangementWidth * 0.5f)
                         break;
+                    // Point-mirrored partners lie half a perimeter apart.
+                    var pairStep = (math.PI * distance + extent * 2f) / pairs;
                     for (var phase = 0; phase < 8; phase++)
                     {
                         var trial = new List<PlazaFurniturePlacement>();
                         for (var pair = 0; pair < pairs; pair++)
                         {
-                            var angle = (pair + phase / 8f) * angleStep;
-                            var direction = new float2(math.cos(angle),
-                                math.sin(angle));
+                            var position = StadiumPoint(center, axis, extent,
+                                distance, (pair + phase / 8f) * pairStep,
+                                out var outward);
                             var candidate = new FurniturePairCandidate
                             {
-                                Position = center + direction * distance,
-                                Rotation = math.atan2(-direction.x,
-                                    -direction.y),
+                                Position = position,
+                                Rotation = math.atan2(-outward.x,
+                                    -outward.y),
+                                Tangent = new float2(-outward.y, outward.x),
                             };
                             if (!TryAddArrangement(trial, candidate, arrangement,
                                     center, centerpieces, polygon, entrances,
@@ -381,6 +393,49 @@ namespace ParkManager.Geometry
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns the point at arc length s (counter-clockwise, starting at
+        /// the +axis tip) on the stadium of half straight length extent and
+        /// cap radius radius. The perimeter is point-symmetric around center,
+        /// so s and s + perimeter / 2 are mirror partners.
+        /// </summary>
+        private static float2 StadiumPoint(float2 center, float2 axis,
+            float extent, float radius, float s, out float2 outward)
+        {
+            var normal = new float2(-axis.y, axis.x);
+            var quarterArc = math.PI * 0.5f * radius;
+            var straight = extent * 2f;
+            float angle;
+            float side;
+            if (s < quarterArc)
+            {
+                angle = s / radius;
+                side = 1f;
+            }
+            else if ((s -= quarterArc) < straight)
+            {
+                outward = normal;
+                return center + axis * (extent - s) + normal * radius;
+            }
+            else if ((s -= straight) < quarterArc * 2f)
+            {
+                angle = math.PI * 0.5f + s / radius;
+                side = -1f;
+            }
+            else if ((s -= quarterArc * 2f) < straight)
+            {
+                outward = -normal;
+                return center + axis * (s - extent) - normal * radius;
+            }
+            else
+            {
+                angle = math.PI * 1.5f + (s - straight) / radius;
+                side = 1f;
+            }
+            outward = axis * math.cos(angle) + normal * math.sin(angle);
+            return center + axis * (extent * side) + outward * radius;
         }
 
         private static List<FurniturePairCandidate> BuildBoundaryFurnitureCandidates(

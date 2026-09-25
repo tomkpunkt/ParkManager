@@ -117,25 +117,26 @@ test('a plaza can be drawn, configured, built, furnished, and finished', async (
   await expect(page.getByText('Noch keine Punkte gesetzt')).toBeVisible();
 });
 
-test('plaza preview follows placement rules instead of changing randomly', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'plaza', exact: true }).click();
-  const summary = page.getByTestId('live-plan-summary');
-  await expect(summary).toContainText('Plaza-Regeln');
-  const refresh = page.getByRole('button', { name: 'Vorschau aktualisieren' });
-  await refresh.click();
-  await expect.poll(() => page.getByTestId('live-centerpiece').count()).toBeGreaterThan(0);
-  await expect.poll(() => page.getByTestId('live-furniture').count()).toBeGreaterThan(0);
-  expect(await page.locator('.map svg line').count()).toBe(0);
-  const firstLayout = await page.getByTestId('live-centerpiece').evaluateAll((items) =>
-    items.map((item) => [item.getAttribute('cx'), item.getAttribute('cy')].join(',')).join(';'));
-  const refreshedPlan = page.waitForResponse((response) =>
-    response.url().endsWith('/api/plan'));
-  await refresh.click();
-  await refreshedPlan;
-  await expect.poll(() => page.getByTestId('live-centerpiece').evaluateAll((items) =>
-    items.map((item) => [item.getAttribute('cx'), item.getAttribute('cy')].join(',')).join(';')))
-    .toBe(firstLayout);
+test('a new plaza variant rolls reproducible settings into the controls', async ({ page }) => {
+  const rollOnce = async () => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'plaza', exact: true }).click();
+    const summary = page.getByTestId('live-plan-summary');
+    await expect(summary).toContainText('Plaza-Regeln · Seed 1');
+    await page.getByRole('button', { name: 'Neue Variante' }).click();
+    await expect(summary).toContainText('Seed 2');
+    expect(await page.locator('.map svg line').count()).toBe(0);
+    const pressed = await page.getByTestId('panel-body')
+      .locator('[aria-pressed="true"]').evaluateAll((items) =>
+        items.map((item) => item.getAttribute('aria-label') || item.textContent));
+    const sliders = await page.getByRole('slider').evaluateAll((items) =>
+      items.map((item) => item.getAttribute('aria-valuenow')));
+    return JSON.stringify({ pressed, sliders });
+  };
+  const first = await rollOnce();
+  expect(await rollOnce()).toBe(first);
+  await page.getByRole('button', { name: 'Neue Variante' }).click();
+  await expect(page.getByTestId('live-plan-summary')).toContainText('Seed 3');
 });
 
 test('shared plaza sliders support arrow, home, end, and page keys', async ({ page }) => {

@@ -12,10 +12,12 @@ namespace ParkManager.Tools
     /// materialization and ownership pipeline, not the organic park planner.
     /// The plaza uses explicit, symmetric layout rules. Its whole polygon is
     /// pedestrian-accessible; the surface and editable objects remain visible.
+    /// A new variant rolls the user-adjustable settings from a seed; the rules
+    /// themselves stay deterministic for the chosen settings.
     /// </summary>
     public sealed partial class ParkToolSystem
     {
-        private const int PlazaPlanSeed = 1;
+        private int _plazaSeed = 1;
         private PlazaCenterPlacementMode _plazaCenterPlacement =
             PlazaCenterPlacementMode.Centered;
         private PlazaArrangementPlacementMode _plazaArrangementPlacement =
@@ -160,9 +162,9 @@ namespace ParkManager.Tools
             var next = PlazaPlanner.Generate(_points, gates, radius,
                 _plazaCenterPlacement, _plazaArrangementPlacement,
                 _plazaCenterpieceSpacing, _plazaArrangementSpacing,
-                _furnitureDensity, PlazaPlanSeed, useCenter, arrangement);
+                _furnitureDensity, _plazaSeed, useCenter, arrangement);
             _plazaPlan = next;
-            GenerateDecorationPlan(PlazaPlanSeed);
+            GenerateDecorationPlan(_plazaSeed);
             PublishPlazaPlacementSettings();
             if (next.Furniture.Count == 0)
                 PublishState("Das Arrangement passt nicht auf diese Plaza-Fläche.");
@@ -278,6 +280,54 @@ namespace ParkManager.Tools
                 && _plazaPlan != null) ReplanPlazaArrangement();
         }
 
+        /// <summary>
+        /// Rolls every plaza setting of the surface step plus the furnishing,
+        /// then publishes the values so the controls show the variant.
+        /// </summary>
+        private void RollPlazaVariant(int seed)
+        {
+            _plazaSeed = seed;
+            var layout = PlazaVariantRoller.RollLayout(seed,
+                _assetCatalog.GetUiChoiceNames(ParkAssetCategory.PlazaCenter,
+                    _points),
+                _assetCatalog.GetUiChoiceNames(ParkAssetCategory.Surface),
+                _assetCatalog.GetUiChoiceNames(ParkAssetCategory.Fence));
+            _plazaNoCenter = string.IsNullOrEmpty(layout.CenterAsset);
+            _plazaCenterPlacement = layout.CenterPlacement;
+            _plazaCenterpieceSpacing = layout.CenterpieceSpacing;
+            _plazaArrangementPlacement = layout.ArrangementPlacement;
+            _plazaArrangementSpacing = layout.ArrangementSpacing;
+            _plazaFenceEnabled = !string.IsNullOrEmpty(layout.FenceAsset);
+            RollPlazaFurnishing(seed);
+            // Publishes the asset selection and, through
+            // RefreshPlazaCenterChoices, the centerpiece and arrangement.
+            _assetCatalog.SelectPlazaVariantAssets(layout.SurfaceAsset,
+                layout.FenceAsset, layout.CenterAsset);
+            PublishPlazaPlacementSettings();
+        }
+
+        /// <summary>Rolls the arrangement slots and the furnishing density.</summary>
+        private void RollPlazaFurnishing(int seed)
+        {
+            _plazaSeed = seed;
+            var assetsByKind = new List<IReadOnlyList<string>>();
+            for (var kind = PlazaFurnitureKind.Bench;
+                kind <= PlazaFurnitureKind.Bush; kind++)
+                assetsByKind.Add(_assetCatalog.GetUiChoiceNames(
+                    ArrangementCategory(kind)));
+            var furnishing = PlazaVariantRoller.RollFurnishing(seed, assetsByKind);
+            _plazaArrangement.Clear();
+            _plazaArrangement.AddRange(furnishing.Arrangement);
+            _furnitureDensity = furnishing.Density;
+            PublishPlazaArrangement();
+        }
+
+        private static int NewPlazaVariantSeed()
+        {
+            var seed = Guid.NewGuid().GetHashCode() & int.MaxValue;
+            return seed == 0 ? 1 : seed;
+        }
+
         private void GeneratePlazaPlan()
         {
             _plazaPlan = null;
@@ -308,12 +358,12 @@ namespace ParkManager.Tools
             var plan = PlazaPlanner.Generate(_points, gates, centerRadius,
                 _plazaCenterPlacement, _plazaArrangementPlacement,
                 _plazaCenterpieceSpacing, _plazaArrangementSpacing,
-                _furnitureDensity, PlazaPlanSeed, useCenter, arrangement);
+                _furnitureDensity, _plazaSeed, useCenter, arrangement);
             _plazaPlan = plan;
-            _pathPlan = ParkPathPlan.Empty(PlazaPlanSeed);
-            GenerateDecorationPlan(PlazaPlanSeed);
+            _pathPlan = ParkPathPlan.Empty(_plazaSeed);
+            GenerateDecorationPlan(_plazaSeed);
             PublishPlazaPlacementSettings();
-            PublishState($"Plaza-Entwurf: {centerName}, "
+            PublishState($"Plaza-Entwurf (Seed {_plazaSeed}): {centerName}, "
                 + $"{_plazaCenterPlacement}, {_plazaArrangementPlacement}, "
                 + $"{plan.Centerpieces.Count} Mittelobjekte, "
                 + $"{plan.Furniture.Count} Ausstattungselemente.");

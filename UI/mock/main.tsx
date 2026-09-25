@@ -185,7 +185,7 @@ function App() {
         </> : null}
       </svg>
       {livePlan && !report ? <div className="report" data-testid="live-plan-summary"><strong>Live-Layout · {get('SiteType') === 1
-        ? 'Plaza-Regeln' : `Seed ${livePlan.seed}`}</strong>
+        ? `Plaza-Regeln · Seed ${livePlan.seed}` : `Seed ${livePlan.seed}`}</strong>
         <div>{livePlan.paths.length} Routen · {livePlan.centers.length} Zentren · {livePlan.furniture.length} Assets · {livePlan.fences.length} Zaunläufe</div>
         <small>Berechnet mit den Produktions-Planern. Asset-Radien im Mock sind Beispielwerte.</small>
       </div> : null}

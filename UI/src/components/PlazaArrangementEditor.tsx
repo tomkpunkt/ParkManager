@@ -3,6 +3,7 @@ import { useValue } from "cs2/api";
 import { AssetChoiceMap } from "../assetChoices";
 import { editPlazaArrangement, plazaArrangementJson$,
   setFurnitureDensity } from "../bindings";
+import { RangeSlider } from "./RangeSlider";
 import { Texts } from "../i18n";
 import styles from "../panel.module.less";
 
@@ -58,39 +59,20 @@ export const PlazaArrangementEditor = ({ t, choices, busy, density,
     grid.scrollTop += direction * (tile
       ? tile.getBoundingClientRect().height : 78) * 2;
   };
-  const updateDensity = (event: any) => {
-    if (busy) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1,
-      (event.clientX - rect.left) / Math.max(1, rect.width)));
-    setFurnitureDensity(25 + Math.round(ratio * 7) * 25);
-  };
-
   return <div className={styles.plazaArrangementStage}>
-    <div className={styles.assetStageHeader}>
+    <div className={styles.assetStageHeader} data-testid="asset-header">
       <div>
-        <span className={styles.eyebrow}>3 / 4 · {t.plazaSteps[2]}</span>
-        <h2>{t.plazaArrangementTitle}</h2>
         <p>{decorationPlanReady ? t.plazaDecorationPreview
           : summary.startsWith("Das Arrangement") ? summary
             : t.plazaArrangementHelp}</p>
       </div>
-      <div className={styles.plazaArrangementDensity}>
+      <div className={`${styles.densityControl} ${styles.plazaArrangementDensity}`}
+        data-testid="plaza-density-settings">
         <span>{t.plazaArrangementDensity}</span>
-        <button type="button" className={styles.densitySlider}
-          disabled={busy} role="slider" aria-label={t.plazaArrangementDensity}
-          aria-valuemin={25} aria-valuemax={200} aria-valuenow={density}
-          onMouseDown={updateDensity}
-          onMouseMove={(event) => {
-            if ((event.buttons & 1) !== 0) updateDensity(event);
-          }}>
-          <span className={styles.densityTrack}>
-            <span className={styles.densityFill}
-              style={{ width: `${(density - 25) / 1.75}%` }} />
-            <span className={styles.densityThumb}
-              style={{ left: `${(density - 25) / 1.75}%` }} />
-          </span>
-        </button>
+        <RangeSlider label={t.plazaArrangementDensity} value={density}
+          minimum={25} maximum={200} step={25} disabled={busy}
+          formatValue={(value) => `${value}%`}
+          onChange={setFurnitureDensity} />
         <strong>{density}%</strong>
       </div>
     </div>

@@ -20,7 +20,8 @@ var failures = new List<string>();
 for (var index = 0; index < count; index++)
 {
     var seed = index + 1;
-    var mode = (PlazaLayoutMode)(index % 4);
+    var centerPlacement = (PlazaCenterPlacementMode)(index % 3);
+    var arrangementPlacement = (PlazaArrangementPlacementMode)(index / 3 % 2);
     var width = 36f + index % 13 * 4f;
     var height = 30f + index % 9 * 5f;
     var polygon = (index % 5) switch {
@@ -40,7 +41,10 @@ for (var index = 0; index < count; index++)
     };
     var gates = new List<float2> { new(width / 2, 0) };
     var radius = index % 7 == 0 ? 5.5f : 2.5f;
-    var withCenter = mode != PlazaLayoutMode.Open;
+    var withCenter = index % 5 != 4;
+    var centerpieceSpacing = 8 + index % 6 * 5;
+    var arrangementSpacing = index % 11;
+    var density = 50 + index % 7 * 25;
     var arrangement = new List<PlazaArrangementItem> {
         new() { Kind = PlazaFurnitureKind.Bench, AssetName = "MockBench",
             FootprintRadius = 0.8f, Size = 1.6f },
@@ -49,10 +53,10 @@ for (var index = 0; index < count; index++)
         new() { Kind = PlazaFurnitureKind.Bench, AssetName = "MockBench",
             FootprintRadius = 0.8f, Size = 1.6f },
     };
-    var plan = PlazaPlanner.Generate(polygon, gates, radius, mode, seed,
-        withCenter, arrangement);
+    var plan = PlazaPlanner.Generate(polygon, gates, radius,
+        centerPlacement, arrangementPlacement, centerpieceSpacing,
+        arrangementSpacing, density, seed, withCenter, arrangement);
     var errors = new List<string>();
-    if (plan.RoutingSegments.Count != 0) errors.Add("Unexpected hidden network");
     if (plan.Furniture.Count > 64) errors.Add("Furniture limit exceeded");
     if (withCenter && PlazaPlanner.CanFitCenterpiece(polygon, radius)
         && plan.Centerpieces.Count == 0) errors.Add("Missing fitting center");
@@ -65,21 +69,42 @@ for (var index = 0; index < count; index++)
             errors.Add("Furniture footprint outside bounds");
         if (plan.Centerpieces.Any(center =>
             math.distance(center.Position, item.Position)
-            < center.Radius + item.FootprintRadius - 0.001f))
+            < center.Radius + item.FootprintRadius + 0.75f
+                + (arrangementPlacement == PlazaArrangementPlacementMode.AroundCenter
+                    ? arrangementSpacing : 0f) - 0.001f))
             errors.Add("Furniture overlaps center");
+        var minimumBoundaryGap = item.FootprintRadius
+            + (arrangementPlacement == PlazaArrangementPlacementMode.AlongBoundary
+                ? arrangementSpacing : 0.65f);
+        if (BoundaryDistance(item.Position) < minimumBoundaryGap - 0.001f)
+            errors.Add("Furniture violates its boundary spacing");
     }
     foreach (var center in plan.Centerpieces)
         if (!Inside(center.Position)
             || BoundaryDistance(center.Position) < center.Radius - 0.001f)
             errors.Add("Centerpiece footprint outside bounds");
-    foreach (var route in plan.RoutingSegments)
-        if (!Inside(route.A) || !Inside(route.B)) errors.Add("Routing endpoint outside bounds");
-    var replay = PlazaPlanner.Generate(polygon, gates, radius, mode, seed,
-        withCenter, arrangement);
+    for (var i = 0; i + 1 < plan.Furniture.Count; i += 2)
+    {
+        var first = plan.Furniture[i];
+        var second = plan.Furniture[i + 1];
+        if (first.ArrangementId != second.ArrangementId || first.Kind != second.Kind)
+            errors.Add("Arrangement pair was split");
+        CheckFacingCenter(first);
+        CheckFacingCenter(second);
+        if (i >= 2 && math.distance(
+            (first.Position + second.Position) * 0.5f,
+            (plan.Furniture[0].Position + plan.Furniture[1].Position) * 0.5f) > 0.01f)
+            errors.Add("Arrangement pairs are not mirrored around one center");
+    }
+    var replay = PlazaPlanner.Generate(polygon, gates, radius,
+        centerPlacement, arrangementPlacement, centerpieceSpacing,
+        arrangementSpacing, density, seed + 1000, withCenter, arrangement);
     if (JsonSerializer.Serialize(Describe(plan)) != JsonSerializer.Serialize(Describe(replay)))
         errors.Add("Non-deterministic replay");
     if (errors.Count > 0) failures.Add($"Case {index}: {string.Join(", ", errors.Distinct())}");
-    cases.Add(new { index, seed, mode = mode.ToString(), width, height, radius,
+    cases.Add(new { index, seed, centerPlacement = centerPlacement.ToString(),
+        arrangementPlacement = arrangementPlacement.ToString(), centerpieceSpacing,
+        arrangementSpacing, density, width, height, radius,
         errors = errors.Distinct().ToArray(), plan = Describe(plan) });
     bool Inside(float2 p) {
         var inside = false;
@@ -102,6 +127,15 @@ for (var index = 0; index < count; index++)
         }
         return best;
     }
+    void CheckFacingCenter(PlazaFurniturePlacement item)
+    {
+        if (item.Kind == PlazaFurnitureKind.Bush) return;
+        var midpoint = (plan.Furniture[0].Position + plan.Furniture[1].Position) * 0.5f;
+        var towardCenter = math.normalizesafe(midpoint - item.Position);
+        var forward = new float2(math.sin(item.Rotation), math.cos(item.Rotation));
+        if (math.dot(forward, towardCenter) < 0.75f)
+            errors.Add($"{item.Kind} faces away from its arrangement center");
+    }
 }
 var report = new { count, failed = failures.Count, failures, cases };
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
@@ -117,6 +151,5 @@ static object Describe(PlazaPlan plan) => new {
     furniture = plan.Furniture.Select(x => new { kind = x.Kind.ToString(),
         x = x.Position.x, y = x.Position.y, x.Rotation,
         x.FootprintRadius, x.ArrangementId }).ToArray(),
-    routes = plan.RoutingSegments.Select(x => new { ax = x.A.x, ay = x.A.y,
-        bx = x.B.x, by = x.B.y }).ToArray()
+    routes = Array.Empty<object>()
 };

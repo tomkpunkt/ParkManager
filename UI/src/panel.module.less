@@ -7,6 +7,13 @@
 // Shared outer inset: match the established spacing of the panel header.
 @panelInset: 10rem;
 @panelGap: 10rem;
+// UI styling ruleset: 10rem panel inset/gap; 184rem settings labels; 40rem
+// controls; 220rem asset panes. Park and Plaza share these primitives, while
+// stage-specific content may add rows but must not redefine their geometry.
+@settingLabelWidth: 184rem;
+@settingControlHeight: 40rem;
+@assetPaneHeight: 220rem;
+@assetPaneRadius: 7rem;
 
 .panel {
   position: absolute;
@@ -60,6 +67,12 @@
   font-size: 19rem;
 }
 
+.brandMark img {
+  width: 27rem;
+  height: 28rem;
+  object-fit: contain;
+}
+
 .progress {
   display: flex;
   align-items: center;
@@ -88,17 +101,7 @@
   font-family: var(--fontFamily);
   text-align: left;
   white-space: nowrap;
-  pointer-events: auto;
-}
-
-.progressStep:hover:not([disabled]) {
-  color: var(--menuText1Normal);
-  background-color: var(--menuHoverColor);
-}
-
-.progressStep[disabled] {
-  opacity: 0.42;
-  pointer-events: none;
+  cursor: default;
 }
 
 .progressStepActive {
@@ -206,14 +209,12 @@
   min-height: 170rem;
 }
 
-.plazaBody { min-height: 260rem; }
+.plazaBody { min-height: 270rem; }
 
 .compactBody .stageColumn {
   padding-bottom: 0;
 }
 
-.compactBody .eyebrow { margin-bottom: 3rem; }
-.compactBody .stageCopy h2 { margin-bottom: 3rem; }
 .compactBody .stageCopy p { margin-bottom: 5rem; }
 .compactBody .statePill { min-height: 22rem; padding-top: 2rem; padding-bottom: 2rem; }
 
@@ -226,6 +227,14 @@
 
 .pathStageColumn .stageCopy {
   flex: 1 1 0;
+  align-self: stretch;
+  justify-content: space-between;
+}
+
+.pathStageIntro {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .pathSettings {
@@ -237,19 +246,176 @@
   align-self: flex-start;
 }
 
+.plazaPathSettings {
+  gap: 0;
+}
+
+.plazaPathSettings > * {
+  margin-bottom: @panelGap;
+}
+
+.plazaPathSettings > :last-child {
+  margin-bottom: 0;
+}
+
+.plazaPathSettings > .compactSetting:first-child .segmentedControl button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: @settingControlHeight;
+  white-space: nowrap;
+}
+
+.plazaPathSettings > [data-testid="plaza-center-placement"],
+.plazaPathSettings > [data-testid="plaza-arrangement-placement"] {
+  margin-top: 0;
+}
+
+.plazaRuleSegments {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plazaRuleSegments button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 5rem;
+  white-space: normal;
+}
+
+.plazaPathSettings .plazaRuleSegments button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 46rem;
+  min-height: 46rem;
+  gap: 3rem;
+  padding: 3rem 5rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.plazaRuleSegments svg {
+  display: block;
+  flex: 0 0 17rem;
+  width: 17rem;
+  height: 17rem;
+}
+
+.plazaAssetSelectors {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: @panelGap;
+  margin-top: 8rem;
+}
+
+.plazaAssetGroup {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: @panelGap;
+  padding: 10rem;
+  box-sizing: border-box;
+  border: 1rem solid var(--menuBorderColor1);
+  border-radius: @assetPaneRadius;
+  background-color: rgba(10, 19, 31, 0.24);
+}
+
+.plazaPathSettings > [data-testid="plaza-fence-group"] {
+  margin-top: 0;
+}
+
+.settingsDivider,
+.plazaSettingsDivider {
+  align-self: stretch;
+  flex: 0 0 1rem;
+  height: 1rem;
+  background-color: var(--menuBorderColor1);
+}
+
+.plazaAssetGroupHeader {
+  display: flex;
+  align-items: center;
+  min-height: 24rem;
+  gap: @panelGap;
+  color: var(--menuText1Normal);
+}
+
+.plazaAssetGroupHeader strong {
+  font-size: var(--fontSizeS);
+}
+
+.plazaAssetGroup .plazaCenterChoices {
+  flex: 0 0 auto;
+  height: 76rem;
+  max-height: 76rem;
+  gap: 4rem;
+}
+
+.plazaAssetGroup .plazaCenterChoice {
+  flex: 0 0 36rem;
+  height: 36rem;
+  padding: 3rem;
+}
+
+.plazaAssetGroup .surfaceChoices {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: 76rem;
+  gap: 4rem;
+}
+
+.plazaAssetGroup .surfaceChoices button {
+  flex: 0 0 36rem;
+  height: 36rem;
+  padding: 3rem;
+}
+
+.plazaPathSettings .densityControl {
+  min-height: @settingControlHeight;
+  flex: 0 0 @settingControlHeight;
+  padding: 0 10rem;
+  gap: @panelGap;
+  font-weight: normal;
+}
+
+.plazaPathSettings .densityControl > span {
+  display: flex;
+  align-items: center;
+  flex: 0 0 @settingLabelWidth;
+  min-width: @settingLabelWidth;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plazaPathSettings .densityControl strong {
+  flex-basis: 64rem;
+  width: 64rem;
+  min-width: 64rem;
+  font-weight: normal;
+}
+
 .compactSetting {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-height: 32rem;
+  justify-content: flex-start;
+  min-height: @settingControlHeight;
   color: var(--menuText2Normal);
   font-size: var(--fontSizeXS);
 }
 
 .compactSetting > span {
-  flex: 0 0 72rem;
+  display: flex;
+  align-items: center;
+  flex: 0 0 @settingLabelWidth;
+  min-width: @settingLabelWidth;
   margin-right: @panelGap;
-  text-align: right;
+  text-align: left;
 }
 
 .compactSetting .segmentedControl {
@@ -260,7 +426,7 @@
 .compactSetting .segmentedControl button {
   flex: 1 1 50%;
   min-width: 0;
-  height: 30rem;
+  height: @settingControlHeight;
 }
 
 .surfaceChoices {
@@ -297,7 +463,7 @@
   background-color: rgba(79, 195, 247, 0.24);
 }
 
-.plazaCenterSetting { min-height: 84rem; }
+.plazaCenterSetting { min-height: 50rem; align-items: flex-start; }
 
 .plazaCenterChoices {
   display: flex;
@@ -306,8 +472,8 @@
   align-items: flex-start;
   flex: 1 1 auto;
   min-width: 0;
-  height: 84rem;
-  max-height: 84rem;
+  height: 50rem;
+  max-height: 50rem;
   gap: 6rem;
   overflow-x: hidden;
   overflow-y: auto;
@@ -319,7 +485,7 @@
   justify-content: center;
   flex: 0 0 40rem;
   min-width: 0;
-  height: 38rem;
+  height: 44rem;
   padding: 3rem;
   overflow: hidden;
   box-sizing: border-box;
@@ -333,6 +499,25 @@
 
 .plazaCenterChoice:hover:not(:disabled) { background-color: var(--menuHoverColor); }
 .plazaCenterChoice img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.plazaCenterFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28rem;
+  height: 28rem;
+  border-radius: 4rem;
+  color: @assets;
+  background-color: rgba(255, 255, 255, 0.08);
+  font-size: 18rem;
+  font-weight: bold;
+}
+
+.plazaCenterChoice .plazaCenterChoiceIcon {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -406,6 +591,7 @@
 }
 
 .buttonIcon { width: 14rem; height: 14rem; flex: 0 0 14rem; }
+.backButtonIcon { transform: rotate(180deg); }
 .primaryButton .buttonIcon { filter: brightness(0); }
 
 .stageCopy {
@@ -414,23 +600,6 @@
   justify-content: flex-start;
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.eyebrow {
-  margin-bottom: 7rem;
-  color: @paths;
-  font-size: var(--fontSizeXS);
-  font-weight: bold;
-  letter-spacing: 1rem;
-  text-transform: uppercase;
-}
-
-.stageCopy h2,
-.assetStageHeader h2 {
-  margin: 0 0 8rem;
-  color: var(--menuText1Normal);
-  font-size: var(--fontSizeL);
-  font-weight: bold;
 }
 
 .stageCopy p,
@@ -657,7 +826,8 @@
 
 /* Gameface uses Yoga/Flexbox, not CSS Grid. Keep both columns in flow.
    https://guide.coherent-labs.com/layout-assets-and-styling/laying-out-the-screen/ */
-.assetStage {
+.assetStage,
+.plazaArrangementStage {
   display: flex;
   flex-direction: column;
   gap: @panelGap;
@@ -671,8 +841,8 @@
   display: flex;
   flex-direction: row;
   gap: @panelGap;
-  flex: 0 0 80rem;
-  min-height: 80rem;
+  flex: 0 0 90rem;
+  min-height: 90rem;
   min-width: 0;
 }
 
@@ -702,7 +872,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: 35rem;
+  min-height: @settingControlHeight;
   flex: 1 1 0;
   gap: @panelGap;
   padding: 5rem @panelInset;
@@ -716,7 +886,15 @@
   white-space: nowrap;
 }
 
-.densityControl > span { flex: 0 0 140rem; min-width: 140rem; }
+.densityControl > span {
+  display: flex;
+  align-items: center;
+  flex: 0 0 @settingLabelWidth;
+  min-width: @settingLabelWidth;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .densitySlider {
   position: relative;
@@ -778,6 +956,10 @@
 }
 
 .densitySlider[disabled] { opacity: 0.35; pointer-events: none; }
+.densitySlider:focus-visible {
+  outline: 2rem solid @paths;
+  outline-offset: 2rem;
+}
 
 .fenceToggle {
   display: flex;
@@ -828,10 +1010,21 @@
   display: flex;
   flex-direction: row;
   gap: @panelGap;
-  flex: 0 0 220rem;
-  height: 220rem;
+  flex: 0 0 @assetPaneHeight;
+  height: @assetPaneHeight;
   min-width: 0;
-  max-height: 220rem;
+  max-height: @assetPaneHeight;
+}
+
+.assetGrid,
+.assetChooser,
+.plazaArrangementSlots,
+.plazaArrangementPicker {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  height: @assetPaneHeight;
+  box-sizing: border-box;
 }
 
 .assetGrid {
@@ -840,10 +1033,8 @@
   align-content: flex-start;
   align-items: flex-start;
   gap: @panelGap;
-  flex: 0 0 49%;
-  width: 49%;
-  min-width: 0;
-  height: 220rem;
+  height: @assetPaneHeight;
+  border: 1rem solid transparent;
   overflow: hidden;
 }
 
@@ -952,17 +1143,14 @@
   background-color: @assets;
 }
 
-.assetChooser {
+.assetChooser,
+.plazaArrangementSlots,
+.plazaArrangementPicker {
   display: flex;
   flex-direction: column;
-  flex: 0 0 49%;
-  width: 49%;
-  min-width: 0;
-  height: 220rem;
-  box-sizing: border-box;
   overflow: hidden;
   border: 1rem solid var(--menuBorderColor1);
-  border-radius: 7rem;
+  border-radius: @assetPaneRadius;
   background-color: @surfaceStrong;
 }
 
@@ -971,7 +1159,7 @@
   align-items: center;
   flex: 0 0 34rem;
   min-height: 34rem;
-  padding: 5rem 9rem;
+  padding: 8rem 10rem;
   box-sizing: border-box;
   border-bottom: 1rem solid var(--menuBorderColor1);
   background-color: rgba(255, 255, 255, 0.045);
@@ -1048,79 +1236,49 @@
   white-space: nowrap;
 }
 
-/* Plaza arrangements use the same fixed stage geometry as the park catalog. */
-.plazaArrangementStage {
-  display: flex;
-  flex-direction: column;
-  gap: @panelGap;
-  width: 100%;
-  min-width: 0;
-}
-
+/* Park and Plaza share the same density row and side-by-side work panes. */
 .plazaArrangementStage .assetStageHeader {
   gap: @panelGap;
-  flex: 0 0 80rem;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
 .plazaArrangementDensity {
   display: flex;
   align-items: center;
   flex: 0 0 49%;
-  height: 38rem;
-  padding: 5rem 10rem;
-  box-sizing: border-box;
-  border: 1rem solid var(--menuBorderColor1);
-  border-radius: 5rem;
-  color: var(--menuText2Normal);
-  background: rgba(255, 255, 255, 0.04);
-  font-size: var(--fontSizeXS);
-  white-space: nowrap;
+  height: @settingControlHeight;
 }
 
-.plazaArrangementDensity > span { flex: 0 0 145rem; }
+.plazaArrangementDensity > span { flex-basis: @settingLabelWidth; }
 .plazaArrangementDensity .densitySlider { flex: 1 1 auto; width: auto; }
-.plazaArrangementDensity strong {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex: 0 0 64rem;
-  width: 64rem;
-  min-width: 64rem;
-  text-align: right;
-  white-space: nowrap;
-}
 
 .plazaArrangementWorkspace {
   display: flex;
   flex-direction: row;
   gap: @panelGap;
-  flex: 0 0 230rem;
-  height: 230rem;
+  flex: 0 0 @assetPaneHeight;
+  height: @assetPaneHeight;
   min-width: 0;
-  max-height: 230rem;
+  max-height: @assetPaneHeight;
 }
 
 .plazaArrangementSlots,
 .plazaArrangementPicker {
   display: flex;
   flex-direction: column;
-  flex: 0 0 49%;
-  width: 49%;
-  min-width: 0;
-  height: 230rem;
-  box-sizing: border-box;
   overflow: hidden;
   border: 1rem solid var(--menuBorderColor1);
-  border-radius: 7rem;
+  border-radius: @assetPaneRadius;
   background: @surfaceStrong;
 }
 
 .plazaArrangementSlotRow {
   display: flex;
-  gap: 5rem;
+  gap: @panelGap;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 10rem;
+  padding: 8rem;
 }
 
 .plazaArrangementSlot,

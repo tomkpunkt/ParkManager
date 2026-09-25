@@ -10,12 +10,19 @@ namespace ParkManager.Tools
     /// <summary>
     /// Plaza-specific planning adapter. It deliberately reuses only the
     /// materialization and ownership pipeline, not the organic park planner.
-    /// The routing graph is built as an invisible pedestrian network; the
-    /// surface and individually editable objects remain visible.
+    /// The plaza uses explicit, symmetric layout rules. Its whole polygon is
+    /// pedestrian-accessible; the surface and editable objects remain visible.
     /// </summary>
     public sealed partial class ParkToolSystem
     {
-        private PlazaLayoutMode _plazaLayout = PlazaLayoutMode.Axial;
+        private const int PlazaPlanSeed = 1;
+        private PlazaCenterPlacementMode _plazaCenterPlacement =
+            PlazaCenterPlacementMode.Centered;
+        private PlazaArrangementPlacementMode _plazaArrangementPlacement =
+            PlazaArrangementPlacementMode.AroundCenter;
+        private float _plazaCenterpieceSpacing = 20f;
+        private float _plazaArrangementSpacing = 4f;
+        private bool _plazaFenceEnabled;
         private bool _plazaNoCenter;
         private PlazaPlan _plazaPlan;
         private ulong _plazaCenterGeometryHash;
@@ -141,17 +148,97 @@ namespace ParkManager.Tools
                 ?? new List<PlazaArrangementItem>();
             var gates = new List<float2>(_entrances.Count);
             for (var i = 0; i < _entrances.Count; i++) gates.Add(_entrances[i].xz);
-            var radius = _plazaPlan.HasCenterpiece
-                ? _plazaPlan.Centerpieces[0].Radius : 0f;
+            var centerPrefab = Unity.Entities.Entity.Null;
+            var centerName = "ohne Mittelobjekt";
+            var useCenter = !_plazaNoCenter
+                && _assetCatalog.TryGetFittingPlazaCenter(_points,
+                    out centerPrefab, out centerName);
+            var radius = useCenter
+                && _assetCatalog.TryGetPlanarRadius(centerPrefab,
+                    out var measuredRadius)
+                ? math.max(measuredRadius, 2f) : 0f;
             var next = PlazaPlanner.Generate(_points, gates, radius,
-                _plazaLayout, _plazaPlan.Seed, _plazaPlan.HasCenterpiece,
-                arrangement);
+                _plazaCenterPlacement, _plazaArrangementPlacement,
+                _plazaCenterpieceSpacing, _plazaArrangementSpacing,
+                _furnitureDensity, PlazaPlanSeed, useCenter, arrangement);
             _plazaPlan = next;
-            var decorationSeed = _decorationPlan?.Seed
-                ?? (unchecked(next.Seed * 1103515245 + 12345) & int.MaxValue);
-            GenerateDecorationPlan(decorationSeed);
+            GenerateDecorationPlan(PlazaPlanSeed);
+            PublishPlazaPlacementSettings();
             if (next.Furniture.Count == 0)
                 PublishState("Das Arrangement passt nicht auf diese Plaza-Fläche.");
+            else if (!useCenter && !_plazaNoCenter)
+                PublishState("Das Mittelobjekt passt nicht; Anordnung um das Flächenzentrum geplant.");
+            else
+                PublishState($"Plaza-Regeln angewendet: {next.Centerpieces.Count} Mittelobjekte, "
+                    + $"{next.Furniture.Count} Ausstattungselemente.");
+        }
+
+        private void PublishPlazaPlacementSettings()
+        {
+            _ui?.SetPlazaPlacementSettings((int)_plazaCenterPlacement,
+                (int)_plazaArrangementPlacement,
+                (int)math.round(_plazaCenterpieceSpacing),
+                (int)math.round(_plazaArrangementSpacing), _plazaFenceEnabled);
+        }
+
+        private bool CanChangePlazaSettings()
+            => !HasBuiltPaths && !PathBuildBusy && !DecorationBuildBusy
+                && !HasBuiltDecorations;
+
+        private void ApplyPlazaSettings()
+        {
+            PublishPlazaPlacementSettings();
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && _plazaPlan != null && _pathPlan != null)
+                ReplanPlazaArrangement();
+        }
+
+        internal void SetPlazaCenterPlacement(int value)
+        {
+            if (!CanChangePlazaSettings()) return;
+            var next = value >= (int)PlazaCenterPlacementMode.Centered
+                && value <= (int)PlazaCenterPlacementMode.MainAxis
+                ? (PlazaCenterPlacementMode)value
+                : PlazaCenterPlacementMode.Centered;
+            if (_plazaCenterPlacement == next) return;
+            _plazaCenterPlacement = next;
+            ApplyPlazaSettings();
+        }
+
+        internal void SetPlazaArrangementPlacement(int value)
+        {
+            if (!CanChangePlazaSettings()) return;
+            var next = value == (int)PlazaArrangementPlacementMode.AlongBoundary
+                ? PlazaArrangementPlacementMode.AlongBoundary
+                : PlazaArrangementPlacementMode.AroundCenter;
+            if (_plazaArrangementPlacement == next) return;
+            _plazaArrangementPlacement = next;
+            ApplyPlazaSettings();
+        }
+
+        internal void SetPlazaCenterpieceSpacing(int value)
+        {
+            if (!CanChangePlazaSettings()) return;
+            var next = math.clamp(value, 5, 60);
+            if (math.abs(_plazaCenterpieceSpacing - next) < 0.01f) return;
+            _plazaCenterpieceSpacing = next;
+            ApplyPlazaSettings();
+        }
+
+        internal void SetPlazaArrangementSpacing(int value)
+        {
+            if (!CanChangePlazaSettings()) return;
+            var next = math.clamp(value, 0, 20);
+            if (math.abs(_plazaArrangementSpacing - next) < 0.01f) return;
+            _plazaArrangementSpacing = next;
+            ApplyPlazaSettings();
+        }
+
+        internal void SetPlazaFenceEnabled(bool enabled)
+        {
+            if (!CanChangePlazaSettings() || _plazaFenceEnabled == enabled) return;
+            _plazaFenceEnabled = enabled;
+            ApplyPlazaSettings();
         }
 
         internal void RefreshPlazaCenterChoices(bool force = false)
@@ -180,28 +267,15 @@ namespace ParkManager.Tools
             PublishPlazaArrangement();
         }
 
-        internal void SetPlazaLayout(int value)
-        {
-            if (HasBuiltPaths || PathBuildBusy || DecorationBuildBusy) return;
-            var next = value >= (int)PlazaLayoutMode.Axial
-                && value <= (int)PlazaLayoutMode.Open
-                ? (PlazaLayoutMode)value : PlazaLayoutMode.Axial;
-            if (_plazaLayout == next) return;
-            _plazaLayout = next;
-            _ui?.SetPlazaLayout((int)next);
-            if (_selectedSiteKind == ProceduralSiteKind.Plaza
-                && _pathPlan != null) GeneratePaths();
-        }
-
         internal void SelectPlazaCenter(string name)
         {
-            if (HasBuiltPaths || PathBuildBusy || DecorationBuildBusy) return;
+            if (!CanChangePlazaSettings()) return;
             _plazaNoCenter = name == "__none__";
             if (!_plazaNoCenter)
                 _assetCatalog.Select("PlazaCenter\nsingle\n" + (name ?? string.Empty));
             RefreshPlazaCenterChoices();
             if (_selectedSiteKind == ProceduralSiteKind.Plaza
-                && _pathPlan != null) GeneratePaths();
+                && _plazaPlan != null) ReplanPlazaArrangement();
         }
 
         private void GeneratePlazaPlan()
@@ -210,8 +284,7 @@ namespace ParkManager.Tools
             _pathPlan = null;
             _decorationPlan = null;
             _pathPreview.Clear();
-            var useCenter = !_plazaNoCenter
-                && _plazaLayout != PlazaLayoutMode.Open;
+            var useCenter = !_plazaNoCenter;
             var centerPrefab = Unity.Entities.Entity.Null;
             var centerName = "ohne Mittelobjekt";
             if (useCenter && !_assetCatalog.TryGetFittingPlazaCenter(_points,
@@ -230,19 +303,20 @@ namespace ParkManager.Tools
             var gates = new List<float2>(_entrances.Count);
             for (var i = 0; i < _entrances.Count; i++)
                 gates.Add(_entrances[i].xz);
-            var seed = Guid.NewGuid().GetHashCode() & int.MaxValue;
-            if (seed == 0) seed = 1;
             var arrangement = ResolvedPlazaArrangement()
                 ?? new List<PlazaArrangementItem>();
             var plan = PlazaPlanner.Generate(_points, gates, centerRadius,
-                _plazaLayout, seed, useCenter, arrangement);
+                _plazaCenterPlacement, _plazaArrangementPlacement,
+                _plazaCenterpieceSpacing, _plazaArrangementSpacing,
+                _furnitureDensity, PlazaPlanSeed, useCenter, arrangement);
             _plazaPlan = plan;
-            _pathPlan = ParkPathPlan.Empty(seed);
-            GenerateDecorationPlan(unchecked(seed * 1103515245 + 12345)
-                & int.MaxValue);
+            _pathPlan = ParkPathPlan.Empty(PlazaPlanSeed);
+            GenerateDecorationPlan(PlazaPlanSeed);
+            PublishPlazaPlacementSettings();
             PublishState($"Plaza-Entwurf: {centerName}, "
-                + $"{_plazaLayout}, {plan.Centerpieces.Count} Mittelobjekte, "
-                + $"Seed {seed}, {plan.Furniture.Count} Ausstattungselemente.");
+                + $"{_plazaCenterPlacement}, {_plazaArrangementPlacement}, "
+                + $"{plan.Centerpieces.Count} Mittelobjekte, "
+                + $"{plan.Furniture.Count} Ausstattungselemente.");
             PublishPlannerState();
         }
 
@@ -262,20 +336,27 @@ namespace ParkManager.Tools
                     Size = centerpiece.Radius,
                 });
             }
-            // Keep each mirrored arrangement intact when thinning density.
             for (var i = 0; i + 1 < _plazaPlan.Furniture.Count; i += 2)
             {
                 var first = _plazaPlan.Furniture[i];
                 var second = _plazaPlan.Furniture[i + 1];
                 var kind = ToDecorationKind(first.Kind);
-                var draw = (int)((unchecked((uint)seed)
-                    ^ (uint)first.ArrangementId * 16777619u) % 100u);
-                if (first.ArrangementId != _plazaPlan.Furniture[0].ArrangementId
-                    && draw >= math.clamp(_furnitureDensity, 0, 200)) continue;
                 placements.Add(ToPlacement(first, kind, (uint)i));
                 placements.Add(ToPlacement(second, kind, (uint)(i + 1)));
             }
-            return new ParkDecorationPlan(seed, false, placements);
+            if (_plazaFenceEnabled)
+            {
+                var gates = new List<float2>(_entrances.Count);
+                for (var i = 0; i < _entrances.Count; i++)
+                    gates.Add(_entrances[i].xz);
+                var fencePlan = ParkDecorationPlanner.Generate(_points,
+                    ParkPathPlan.Empty(seed), gates, seed, 0f, true, 25, 25,
+                    1 << ((int)ParkDecorationKind.Fence - 1));
+                for (var i = 0; i < fencePlan.Placements.Count; i++)
+                    if (fencePlan.Placements[i].Kind == ParkDecorationKind.Fence)
+                        placements.Add(fencePlan.Placements[i]);
+            }
+            return new ParkDecorationPlan(seed, _plazaFenceEnabled, placements);
         }
 
         private static ParkDecorationKind ToDecorationKind(PlazaFurnitureKind kind)

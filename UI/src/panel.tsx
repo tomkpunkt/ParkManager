@@ -6,22 +6,28 @@ import {
   decorationPlanReady$, decorationSummary$,
   entranceCount$, finishPark, generateDecorations, generatePaths,
   furnitureDensity$, locale$, panelOpen$, pathBuildBusy$,
-  pathBuildPresent$, pathBuildSummary$, pathPlanReady$, pathType$, plannerMode$, pointCount$,
-  plazaCenterOptionsJson$, plazaCenterSelected$, plazaLayout$, selectPlazaCenter,
-  setPlazaLayout,
+  pathBuildPresent$, pathBuildStatus$, pathBuildSummary$, pathPlanReady$,
+  pathType$, plannerMode$, pointCount$,
+  plazaArrangementPlacement$, plazaArrangementSpacing$,
+  plazaCenterOptionsJson$, plazaCenterSelected$, plazaCenterPlacement$,
+  plazaCenterpieceSpacing$, plazaFenceEnabled$, selectPlazaCenter,
+  setPlazaArrangementPlacement, setPlazaArrangementSpacing,
+  setPlazaCenterPlacement, setPlazaCenterpieceSpacing, setPlazaFenceEnabled,
   polygonArea$, polygonClosed$, polygonValid$, removeBuiltDecorations, removeBuiltPaths,
-  selectAsset, setPathType, setSiteType, siteType$, togglePlannerMode, toggleTool,
+  selectAsset, setPathType, setSiteType, setPlannerMode, siteType$, toggleTool,
   vegetationDensity$,
 } from "./bindings";
 import { parseAssetChoices } from "./assetChoices";
 import { AssetCatalog } from "./components/AssetCatalog";
+import { PathSettings } from "./components/PathSettings";
+import { PlazaFenceSelector } from "./components/PlazaFenceSelector";
 import { PlazaArrangementEditor } from "./components/PlazaArrangementEditor";
 import { SnapControls, StatePill } from "./components/WorkflowParts";
 import { getTexts } from "./i18n";
-import arrowLeftIcon from "./assets/arrow-left.svg";
 import arrowRightIcon from "./assets/arrow-right.svg";
-import refreshIcon from "./assets/refresh.svg";
+import brandLogo from "./assets/park-manager.svg";
 import styles from "./panel.module.less";
+import { deriveWorkflowModel } from "./workflow";
 
 const stop = (event: any) => event.stopPropagation();
 
@@ -39,8 +45,7 @@ const parsePlazaCenterOptions = (json: string): PlazaCenterOption[] => {
             ? (option as any).name : "",
           icon: typeof (option as any)?.icon === "string"
             ? (option as any).icon : "",
-        }).filter((option: PlazaCenterOption) => option.name.trim().length > 0
-          && option.icon.trim().length > 0);
+        }).filter((option: PlazaCenterOption) => option.name.trim().length > 0);
   } catch {
     return [];
   }
@@ -71,12 +76,16 @@ export const ParkManagerPanel = () => {
   const pathBuildBusy = useValue(pathBuildBusy$);
   const pathBuildPresent = useValue(pathBuildPresent$);
   const pathBuildSummary = useValue(pathBuildSummary$);
+  const pathBuildStatus = useValue(pathBuildStatus$);
   const pathType = useValue(pathType$);
   const siteType = useValue(siteType$);
-  const plazaLayout = useValue(plazaLayout$);
+  const plazaCenterPlacement = useValue(plazaCenterPlacement$);
+  const plazaArrangementPlacement = useValue(plazaArrangementPlacement$);
+  const plazaCenterpieceSpacing = useValue(plazaCenterpieceSpacing$);
+  const plazaArrangementSpacing = useValue(plazaArrangementSpacing$);
+  const plazaFenceEnabled = useValue(plazaFenceEnabled$);
   const plazaCenterOptions = parsePlazaCenterOptions(
-    useValue(plazaCenterOptionsJson$)).filter((option) =>
-      !failedCenterIcons[option.icon]);
+    useValue(plazaCenterOptionsJson$));
   const plazaCenterSelected = useValue(plazaCenterSelected$);
   const vegetationDensity = useValue(vegetationDensity$);
   const furnitureDensity = useValue(furnitureDensity$);
@@ -89,21 +98,28 @@ export const ParkManagerPanel = () => {
   const surfaceChoice = assetChoices.surface;
   const visibleSurfaces = (surfaceChoice?.options ?? []).filter((option) =>
     !failedSurfaceIcons[option.icon]);
+  const fenceChoice = assetChoices.fence;
 
   const busy = pathBuildBusy || decorationBuildBusy;
-  const workflowStage = decorationBuildPresent ? 3
-    : pathBuildPresent ? 2 : plannerMode ? 1 : 0;
+  const workflow = deriveWorkflowModel({ plannerMode, polygonValid: valid,
+    pathsBuilt: pathBuildPresent, decorationsBuilt: decorationBuildPresent });
   const outlineState = pointCount === 0 ? t.outlineEmpty
     : !closed ? t.outlineOpen(pointCount)
       : !valid ? t.outlineInvalid(pointCount) : t.outlineReady(pointCount);
-  const pathBuildError = pathBuildSummary.startsWith("Bauprüfung:")
-    || pathBuildSummary.startsWith("Hinweis:")
-    || pathBuildSummary.startsWith("Fehler:");
+  const pathBuildNotice = pathBuildStatus !== "ok";
   const isPlaza = siteType === 1;
   const workflowSteps = isPlaza ? t.plazaSteps : t.steps;
-  const canPlanPlaza = plazaLayout === 3 || plazaCenterSelected === "__none__"
-    || plazaCenterOptions.some((option) =>
-      option.name === plazaCenterSelected);
+  const canPlanPlaza = plazaCenterSelected === "__none__"
+    || plazaCenterOptions.some((option) => option.name === plazaCenterSelected);
+
+  const selectPlazaFence = (name: string | null) => {
+    if (name === null) {
+      setPlazaFenceEnabled(false);
+      return;
+    }
+    selectAsset("Fence", name);
+    setPlazaFenceEnabled(true);
+  };
 
   const showAssetTooltip = (event: any, name: string) => {
     const rect = panelRef.current?.getBoundingClientRect();
@@ -114,31 +130,95 @@ export const ParkManagerPanel = () => {
       y: Math.max(62, event.clientY - rect.top - 39) });
   };
 
+  const renderSurfaceSelector = (groupTestId: string, choicesTestId: string) => (
+    <section className={`${styles.plazaAssetGroup} ${styles.plazaSurfaceGroup}`}
+      data-testid={groupTestId}>
+      <div className={styles.plazaAssetGroupHeader}
+        data-testid={`${groupTestId}-header`}>
+        <strong>{t.background}</strong>
+      </div>
+      <div className={styles.surfaceChoices} data-testid={choicesTestId}>
+        {visibleSurfaces.map((option) => (
+          <button key={option.name} type="button" aria-label={option.name}
+            aria-pressed={surfaceChoice?.selected === option.name}
+            onMouseEnter={(event) => showAssetTooltip(event, option.name)}
+            onMouseLeave={() => setAssetTooltip(null)}
+            className={surfaceChoice?.selected === option.name
+              ? styles.surfaceChoiceActive : ""}
+            disabled={busy || pathBuildPresent}
+            onClick={() => selectAsset("Surface", option.name)}>
+            <img src={option.icon} alt=""
+              onError={() => setFailedSurfaceIcons((current) =>
+                current[option.icon] ? current
+                  : { ...current, [option.icon]: true })} />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderPlazaAssetSelectors = () => (
+    <div className={styles.plazaAssetSelectors} data-testid="plaza-asset-selectors">
+      <section className={`${styles.plazaAssetGroup} ${styles.plazaCenterGroup}`}
+        data-testid="plaza-center-group">
+        <div className={styles.plazaAssetGroupHeader}
+          data-testid="plaza-center-header">
+          <strong>{t.plazaCenter}</strong>
+        </div>
+        <div className={styles.plazaCenterChoices} data-testid="plaza-center-choices">
+          <button type="button" title={t.plazaNoCenter}
+            className={`${styles.plazaCenterChoice} ${plazaCenterSelected === "__none__"
+              ? styles.plazaCenterChoiceActive : ""}`}
+            disabled={busy || pathBuildPresent}
+            aria-pressed={plazaCenterSelected === "__none__"}
+            aria-label={t.plazaNoCenter}
+            onClick={() => selectPlazaCenter("__none__")}>—</button>
+          {plazaCenterOptions.map((option) => {
+            const selected = option.name === plazaCenterSelected;
+            return <button key={option.name} type="button"
+              className={`${styles.plazaCenterChoice} ${selected
+                ? styles.plazaCenterChoiceActive : ""}`}
+              disabled={busy || pathBuildPresent}
+              aria-pressed={selected} aria-label={option.name}
+              onMouseEnter={(event) => showAssetTooltip(event, option.name)}
+              onMouseLeave={() => setAssetTooltip(null)}
+              onClick={() => selectPlazaCenter(option.name)}>
+              {option.icon && !failedCenterIcons[option.icon]
+                ? <img src={option.icon} alt="" onError={() =>
+                  setFailedCenterIcons((current) => ({
+                    ...current, [option.icon]: true }))} />
+                : <span className={styles.plazaCenterFallback} aria-hidden="true">
+                  {option.name.charAt(0).toUpperCase()}
+                </span>}
+            </button>;
+          })}
+        </div>
+      </section>
+      <PlazaFenceSelector t={t} options={fenceChoice?.options ?? []}
+        selected={fenceChoice?.selected ?? ""} enabled={plazaFenceEnabled}
+        disabled={busy || pathBuildPresent} onSelect={selectPlazaFence}
+        onTooltip={showAssetTooltip}
+        onTooltipClose={() => setAssetTooltip(null)} />
+    </div>
+  );
+
   useEffect(() => {
-    if (open) setActiveStage(workflowStage);
-  }, [open, workflowStage]);
+    if (open) setActiveStage(workflow.progressStage);
+  }, [open, workflow.progressStage]);
 
   useEffect(() => setAssetTooltip(null), [open, activeStage]);
 
   if (!open) return null;
 
-  const canOpenStage = (index: number) => (index === 0 && !pathBuildPresent)
-    || (index === 1 && valid)
-    || (index === 2 && pathBuildPresent)
-    || (index === 3 && decorationBuildPresent);
-
   const openStage = (index: number) => {
-    if (busy || !canOpenStage(index)) return;
+    if (busy || !workflow.stageAvailability[index as 0 | 1 | 2 | 3]) return;
     setActiveStage(index);
-    if (index === 0 && plannerMode) togglePlannerMode();
-    else if (index > 0 && !plannerMode) togglePlannerMode();
+    setPlannerMode(index > 0);
   };
 
   const renderOutline = () => (
       <div className={styles.stageColumn}>
         <div className={styles.stageCopy}>
-          <span className={styles.eyebrow}>1 / 4 · {workflowSteps[0]}</span>
-          <h2>{t.outlineTitle}</h2>
           <p>{t.outlineText}</p>
           <div className={styles.stateRow}>
             <StatePill success={valid}>{outlineState}</StatePill>
@@ -152,114 +232,39 @@ export const ParkManagerPanel = () => {
 
   const renderPaths = () => (
       <div className={`${styles.stageColumn} ${styles.pathStageColumn}`}>
-        <div className={styles.stageCopy}>
-          <span className={styles.eyebrow}>2 / 4 · {workflowSteps[1]}</span>
-          <h2>{isPlaza ? t.plazaPathsTitle : t.pathsTitle}</h2>
-          <p>{pathPlanReady ? (isPlaza ? t.plazaPathsPreview : t.pathsPreview)
-            : isPlaza ? (entranceCount > 0 ? t.plazaPathsNeedPlan : t.plazaPathsNoGate)
-              : entranceCount > 0 ? t.pathsGates(entranceCount) : t.pathsNoGate}</p>
-          {pathBuildError ? <p className={styles.buildWarning} role="alert">
-            {pathBuildSummary}
-          </p> : null}
-          <div className={styles.stateRow}>
-            <StatePill success={entranceCount > 0}>{isPlaza
-              ? t.plazaAccesses(entranceCount) : t.pathsGates(entranceCount)}</StatePill>
-            {pathPlanReady ? <StatePill success>{workflowSteps[1]}</StatePill> : null}
+        <div className={styles.stageCopy} data-testid="path-stage-copy">
+          <div className={styles.pathStageIntro} data-testid="path-stage-intro">
+            <p>{pathPlanReady ? (isPlaza ? t.plazaPathsPreview : t.pathsPreview)
+              : isPlaza ? (entranceCount > 0 ? t.plazaPathsNeedPlan : t.plazaPathsNoGate)
+                : entranceCount > 0 ? t.pathsGates(entranceCount) : t.pathsNoGate}</p>
+            {pathBuildNotice ? <p className={styles.buildWarning} role="alert"
+              data-status={pathBuildStatus}>
+              {pathBuildSummary}
+            </p> : null}
+            <div className={styles.stateRow} data-testid="path-stage-state">
+              <StatePill success={entranceCount > 0}>{isPlaza
+                ? t.plazaAccesses(entranceCount) : t.pathsGates(entranceCount)}</StatePill>
+              {pathPlanReady ? <StatePill success>{workflowSteps[1]}</StatePill> : null}
+            </div>
           </div>
+          {isPlaza ? renderPlazaAssetSelectors() : null}
         </div>
-        <div className={styles.pathSettings} data-testid="path-settings">
-          <div className={styles.compactSetting}>
-            <span>{t.siteType}</span>
-            <div className={styles.segmentedControl}>
-              <button className={siteType === 0 ? styles.segmentActive : ""}
-                disabled={busy || pathBuildPresent}
-                onClick={() => setSiteType(0)}>{t.sitePark}</button>
-              <button className={siteType === 1 ? styles.segmentActive : ""}
-                disabled={busy || pathBuildPresent}
-                onClick={() => setSiteType(1)}>{t.sitePlaza}</button>
-            </div>
-          </div>
-          {isPlaza ? <>
-            <div className={styles.compactSetting}>
-              <span>{t.plazaLayout}</span>
-              <div className={styles.segmentedControl}>
-                <button className={plazaLayout === 0 ? styles.segmentActive : ""}
-                  disabled={busy || pathBuildPresent}
-                  aria-pressed={plazaLayout === 0}
-                  onClick={() => setPlazaLayout(0)}>{t.plazaAxial}</button>
-                <button className={plazaLayout === 1 ? styles.segmentActive : ""}
-                  disabled={busy || pathBuildPresent}
-                  aria-pressed={plazaLayout === 1}
-                  onClick={() => setPlazaLayout(1)}>{t.plazaRadial}</button>
-                <button className={plazaLayout === 2 ? styles.segmentActive : ""}
-                  disabled={busy || pathBuildPresent}
-                  aria-pressed={plazaLayout === 2}
-                  onClick={() => setPlazaLayout(2)}>{t.plazaBoundary}</button>
-                <button className={plazaLayout === 3 ? styles.segmentActive : ""}
-                  disabled={busy || pathBuildPresent}
-                  aria-pressed={plazaLayout === 3}
-                  onClick={() => setPlazaLayout(3)}>{t.plazaOpen}</button>
-              </div>
-            </div>
-            <div className={`${styles.compactSetting} ${styles.plazaCenterSetting}`}
-              title={t.plazaCenterHint}>
-              <span>{t.plazaCenter}</span>
-              <div className={styles.plazaCenterChoices} data-testid="plaza-center-choices">
-                <button type="button" title={t.plazaNoCenter}
-                  className={`${styles.plazaCenterChoice} ${plazaCenterSelected === "__none__"
-                    || plazaLayout === 3 ? styles.plazaCenterChoiceActive : ""}`}
-                  disabled={busy || pathBuildPresent || plazaLayout === 3}
-                  aria-pressed={plazaCenterSelected === "__none__" || plazaLayout === 3}
-                  aria-label={t.plazaNoCenter}
-                  onClick={() => selectPlazaCenter("__none__")}>—</button>
-                {plazaCenterOptions.map((option) => {
-                  const selected = option.name === plazaCenterSelected;
-                  return <button key={option.name} type="button"
-                    className={`${styles.plazaCenterChoice} ${selected
-                      ? styles.plazaCenterChoiceActive : ""}`}
-                    disabled={busy || pathBuildPresent || plazaLayout === 3}
-                    aria-pressed={selected} aria-label={option.name}
-                    onMouseEnter={(event) => showAssetTooltip(event, option.name)}
-                    onMouseLeave={() => setAssetTooltip(null)}
-                    onClick={() => selectPlazaCenter(option.name)}>
-                    <img src={option.icon} alt="" onError={() =>
-                      setFailedCenterIcons((current) => ({
-                        ...current, [option.icon]: true }))} />
-                  </button>;
-                })}
-              </div>
-            </div>
-          </> : <div className={styles.compactSetting}>
-            <span>{t.pathType}</span>
-            <div className={styles.segmentedControl}>
-              <button className={pathType === 0 ? styles.segmentActive : ""}
-                disabled={busy || pathBuildPresent}
-                onClick={() => setPathType(0)}>{t.pathNarrow}</button>
-              <button className={pathType === 1 ? styles.segmentActive : ""}
-                disabled={busy || pathBuildPresent}
-                onClick={() => setPathType(1)}>{t.pathWide}</button>
-            </div>
-          </div>}
-          <div className={styles.compactSetting}>
-            <span>{t.background}</span>
-            <div className={styles.surfaceChoices}>
-              {visibleSurfaces.map((option) => (
-                <button key={option.name} aria-label={option.name}
-                  onMouseEnter={(event) => showAssetTooltip(event, option.name)}
-                  onMouseLeave={() => setAssetTooltip(null)}
-                  className={surfaceChoice?.selected === option.name
-                    ? styles.surfaceChoiceActive : ""}
-                  disabled={busy || pathBuildPresent}
-                  onClick={() => selectAsset("Surface", option.name)}>
-                  <img src={option.icon} alt=""
-                    onError={() => setFailedSurfaceIcons((current) =>
-                      current[option.icon] ? current
-                        : { ...current, [option.icon]: true })} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <PathSettings t={t} isPlaza={isPlaza} busy={busy}
+          pathBuildPresent={pathBuildPresent} siteType={siteType} pathType={pathType}
+          centerSelected={plazaCenterSelected}
+          centerPlacement={plazaCenterPlacement}
+          arrangementPlacement={plazaArrangementPlacement}
+          centerpieceSpacing={plazaCenterpieceSpacing}
+          arrangementSpacing={plazaArrangementSpacing}
+          surfaceSelector={renderSurfaceSelector(
+            isPlaza ? "plaza-surface-group" : "park-surface-group",
+            isPlaza ? "plaza-surface-choices" : "park-surface-choices")}
+          onSiteType={setSiteType} onPathType={setPathType}
+          onCenterPlacement={setPlazaCenterPlacement}
+          onArrangementPlacement={setPlazaArrangementPlacement}
+          onCenterpieceSpacing={setPlazaCenterpieceSpacing}
+          onArrangementSpacing={setPlazaArrangementSpacing}
+        />
       </div>
   );
 
@@ -283,8 +288,6 @@ export const ParkManagerPanel = () => {
   const renderComplete = () => (
       <div className={styles.stageColumn}>
         <div className={styles.stageCopy}>
-          <span className={styles.eyebrow}>4 / 4 · {workflowSteps[3]}</span>
-          <h2>{isPlaza ? t.plazaCompleteTitle : t.completeTitle}</h2>
           <p>{isPlaza ? t.plazaCompleteText : t.completeText}</p>
           <div className={styles.stateRow}>
             <StatePill success>{isPlaza ? t.plazaSurfaceBuilt : t.pathsBuilt}</StatePill>
@@ -300,10 +303,12 @@ export const ParkManagerPanel = () => {
         {activeStage === 1 ? <button className={styles.backButton}
           disabled={busy || pathBuildPresent}
           onClick={() => openStage(0)}>
-          <img className={styles.buttonIcon} src={arrowLeftIcon} alt="" />
-          {t.editOutline}</button> : null}
-        {activeStage === 2 ? <button className={styles.dangerButton}
-          disabled={busy} onClick={removeBuiltPaths}>{isPlaza ? t.removePlaza : t.removePark}</button> : null}
+          <img className={`${styles.buttonIcon} ${styles.backButtonIcon}`}
+            src={arrowRightIcon} alt="" />{t.editOutline}</button> : null}
+        {activeStage === 2 ? <button className={styles.backButton}
+          disabled={busy} onClick={removeBuiltPaths}>
+          <img className={`${styles.buttonIcon} ${styles.backButtonIcon}`}
+            src={arrowRightIcon} alt="" />{t.removeSurface}</button> : null}
         {activeStage === 3 ? <button className={styles.backButton}
           disabled={busy} onClick={removeBuiltDecorations}>
           {t.removeDecorations}</button> : null}
@@ -322,7 +327,6 @@ export const ParkManagerPanel = () => {
             disabled={busy || pathBuildPresent || entranceCount === 0 || !pathPlanReady
               || (isPlaza && !canPlanPlaza)}
             onClick={generatePaths}>
-            <img className={styles.buttonIcon} src={refreshIcon} alt="" />
             {isPlaza ? t.plazaRecalculate : t.recalculatePaths}</button>
           <button className={styles.primaryButton}
             disabled={busy || pathBuildPresent || entranceCount === 0
@@ -338,7 +342,6 @@ export const ParkManagerPanel = () => {
           <button className={styles.secondaryButton}
             disabled={busy || decorationBuildPresent || !decorationPlanReady}
             onClick={generateDecorations}>
-            <img className={styles.buttonIcon} src={refreshIcon} alt="" />
             {t.replanDecorations}</button>
           <button className={styles.primaryButton}
             disabled={busy || decorationBuildPresent}
@@ -364,22 +367,22 @@ export const ParkManagerPanel = () => {
       onClick={stop} onContextMenu={stop}>
       <div className={styles.panelHeader} data-testid="panel-header">
         <div className={styles.brand}>
-          <span className={styles.brandMark}>P</span><span>ParkManager</span>
+          <span className={styles.brandMark}>
+            <img src={brandLogo} alt="" data-testid="brand-logo" />
+          </span><span>ParkManager</span>
         </div>
-        <div className={styles.progress}>
+        <div className={styles.progress} data-testid="workflow-progress" role="list">
           {workflowSteps.map((label, index) => (
-            <button key={label} type="button"
+            <div key={label} role="listitem" data-testid="workflow-step"
               className={`${styles.progressStep} ${
                 index === activeStage ? styles.progressStepActive : ""} ${
-                index < workflowStage ? styles.progressStepDone : ""}`}
-              disabled={busy || !canOpenStage(index)}
-              aria-current={index === activeStage ? "step" : undefined}
-              onClick={() => openStage(index)}>
+                index < workflow.progressStage ? styles.progressStepDone : ""}`}
+              aria-current={index === activeStage ? "step" : undefined}>
               <span className={styles.progressNumber}>
-                {index < workflowStage ? "✓" : index + 1}
+                {index < workflow.progressStage ? "✓" : index + 1}
               </span>
               <span>{label}</span>
-            </button>
+            </div>
           ))}
         </div>
         <div className={styles.toolSlot}>

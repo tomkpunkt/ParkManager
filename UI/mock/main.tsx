@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ParkManagerPanel } from '../src/panel';
-import { get, scenario, set } from './mockApi';
+import { get, recalculate as requestMockPlan, scenario, set } from './mockApi';
 import { useValue } from 'cs2/api';
 import { decorationPlanReady$, pathPlanReady$, plannerMode$, pointCount$,
   polygonClosed$, polygonValid$ } from '../src/bindings';
 
 type BatchCase = { index: number; seed: number; width: number; height: number;
-  mode: string; errors: string[]; plan: { centers: { x: number; y: number; Radius: number }[];
+  centerPlacement: string; arrangementPlacement: string; errors: string[];
+  plan: { centers: { x: number; y: number; Radius: number }[];
     furniture: { kind: string; x: number; y: number; FootprintRadius: number }[];
     routes: { ax: number; ay: number; bx: number; by: number }[] } };
 type BatchReport = { count: number; failed: number; cases: BatchCase[] };
 type LivePlan = { seed: number; error?: string;
   paths: { ax: number; ay: number; bx: number; by: number; hidden: boolean }[];
+  fences: { ax: number; ay: number; bx: number; by: number }[];
   centers: { x: number; y: number; radius: number }[];
   furniture: { x: number; y: number; radius: number; kind: string; asset: string }[] };
 
@@ -66,7 +68,11 @@ function App() {
           body: JSON.stringify({ polygon: polygon.map((p) => ({ x: p.x / 8, y: p.y / 8 })),
             entrances: gates.map((p) => ({ x: p.x / 8, y: p.y / 8 })), seed,
             siteType: get('SiteType'), pathType: get('PathType'),
-            plazaLayout: get('PlazaLayout'),
+            plazaCenterPlacement: get('PlazaCenterPlacement'),
+            plazaArrangementPlacement: get('PlazaArrangementPlacement'),
+            plazaCenterpieceSpacing: get('PlazaCenterpieceSpacing'),
+            plazaArrangementSpacing: get('PlazaArrangementSpacing'),
+            plazaFenceEnabled: get('PlazaFenceEnabled'),
             includeCenterpiece: get('PlazaCenterSelected') !== '__none__',
             centerRadius: 2.5,
             arrangement: JSON.parse(get<string>('PlazaArrangementJson') || '[]'),
@@ -82,6 +88,7 @@ function App() {
       }
     };
     window.addEventListener('mock:recalculate', recalculate);
+    if (get('SiteType') === 1 && get('PathPlanReady')) requestMockPlan();
     return () => window.removeEventListener('mock:recalculate', recalculate);
   }, [points, entrances]);
   const current = report?.cases[selected];
@@ -127,6 +134,10 @@ function App() {
           {item}</button>)}
       <button onClick={() => { scenario('empty'); setPoints([]); setEntrances([]); setReport(null); setLivePlan(null); }}>
         Neu zeichnen</button>
+      <button onClick={() => {
+        set('PathBuildStatus', 'error');
+        set('PathBuildSummary', 'Validation failed: selected area is blocked.');
+      }}>Fehlerstatus testen</button>
       <label>Batch-Bericht öffnen <input type="file" accept=".json" hidden
         onChange={(event) => loadReport(event.target.files?.[0])} /></label>
     </div>
@@ -149,10 +160,17 @@ function App() {
               strokeWidth={path.hidden ? '2' : '4'}
               strokeDasharray={path.hidden ? '5 4' : undefined} />) : null}
           {livePlan && pathPlanReady ? livePlan.centers.map((center, i) =>
-            <circle key={`center-${i}`} cx={center.x * 8} cy={center.y * 8}
+            <circle key={`center-${i}`} data-testid="live-centerpiece"
+              cx={center.x * 8} cy={center.y * 8}
               r={center.radius * 8} fill="#58bed4" stroke="white" strokeWidth="1" />) : null}
+          {livePlan && pathPlanReady ? livePlan.fences.map((fence, i) =>
+            <line key={`fence-${i}`} data-testid="live-plaza-fence"
+              x1={fence.ax * 8} y1={fence.ay * 8}
+              x2={fence.bx * 8} y2={fence.by * 8} stroke="#d2d6bd"
+              strokeWidth="3" />) : null}
           {livePlan && decorationPlanReady ? livePlan.furniture.map((item, i) =>
-            <circle key={`furniture-${i}`} cx={item.x * 8} cy={item.y * 8}
+            <circle key={`furniture-${i}`} data-testid="live-furniture"
+              cx={item.x * 8} cy={item.y * 8}
               r={Math.max(2, item.radius * 8)} fill={item.kind === 'Bench' ? '#bd8758'
                 : item.kind === 'Tree' || item.kind === 'Bush' ? '#68cb74' : '#efd56c'}>
               <title>{item.kind} {item.asset}</title></circle>) : null}
@@ -162,8 +180,9 @@ function App() {
             r="8" fill="#5cc9fa" stroke="white" strokeWidth="2" />)}
         </> : null}
       </svg>
-      {livePlan && !report ? <div className="report"><strong>Live-Layout · Seed {livePlan.seed}</strong>
-        <div>{livePlan.paths.length} Routen · {livePlan.centers.length} Zentren · {livePlan.furniture.length} Assets</div>
+      {livePlan && !report ? <div className="report" data-testid="live-plan-summary"><strong>Live-Layout · {get('SiteType') === 1
+        ? 'Plaza-Regeln' : `Seed ${livePlan.seed}`}</strong>
+        <div>{livePlan.paths.length} Routen · {livePlan.centers.length} Zentren · {livePlan.furniture.length} Assets · {livePlan.fences.length} Zaunläufe</div>
         <small>Berechnet mit den Produktions-Planern. Asset-Radien im Mock sind Beispielwerte.</small>
       </div> : null}
       {report ? <div className="report"><strong>{report.count} Varianten · {report.failed} mit Befund</strong><br />
@@ -171,7 +190,7 @@ function App() {
         <input type="number" min="0" max={report.cases.length - 1} value={selected}
           onChange={(event) => setSelected(Math.min(report.cases.length - 1, Math.max(0, Number(event.target.value))))} />
         <button onClick={() => setSelected(Math.min(report.cases.length - 1, selected + 1))}>▶</button>
-        <div>Seed {current?.seed} · {current?.mode} · {current?.width} × {current?.height} m</div>
+        <div>{current?.centerPlacement} · {current?.arrangementPlacement} · {current?.width} × {current?.height} m</div>
         <div>{current?.errors.length ? current.errors.join(', ') : 'Keine geometrischen Befunde'}</div>
       </div> : null}
     </main>

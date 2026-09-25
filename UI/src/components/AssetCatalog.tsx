@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AssetChoiceMap, assetCategories, plazaAssetCategories } from "../assetChoices";
 import { selectAsset, setFurnitureDensity, setVegetationDensity,
   toggleDecorationCategory } from "../bindings";
+import { RangeSlider } from "./RangeSlider";
 import { Texts } from "../i18n";
 import styles from "../panel.module.less";
 
@@ -43,62 +44,30 @@ export const AssetCatalog = ({ t, choices, busy, vegetationDensity,
     const tile = grid.querySelector("button");
     grid.scrollTop += direction * (tile ? tile.getBoundingClientRect().height : 78) * 2;
   };
-  const updateDensity = (event: any, setter: (value: number) => void) => {
-    if (busy || decorationBuildPresent) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1,
-      (event.clientX - rect.left) / Math.max(1, rect.width)));
-    setter(25 + Math.round(ratio * 7) * 25);
-  };
-
   return <>
     <div className={styles.assetStageTop}>
-    <div className={styles.assetStageHeader} data-testid="asset-header">
-      <div>
-        <span className={styles.eyebrow}>3 / 4 · {t.steps[2]}</span>
-        <h2>{t.assetsTitle}</h2>
+      <div className={styles.assetStageHeader} data-testid="asset-header">
+        <div>
         <p>{decorationPlanReady ? t.decorationPreview : t.assetsText}</p>
       </div>
     </div>
     <div className={styles.densitySettings} data-testid="density-settings">
       <div className={styles.densityControl}>
         <span>{t.plantDensity}</span>
-        <button type="button" className={styles.densitySlider}
-          disabled={busy || decorationBuildPresent} role="slider"
-          aria-label={t.plantDensity} aria-valuemin={25} aria-valuemax={200}
-          aria-valuenow={vegetationDensity}
-          onMouseDown={(event) => updateDensity(event, setVegetationDensity)}
-          onMouseMove={(event) => {
-            if ((event.buttons & 1) !== 0)
-              updateDensity(event, setVegetationDensity);
-          }}>
-          <span className={styles.densityTrack}>
-            <span className={styles.densityFill}
-              style={{ width: `${(vegetationDensity - 25) / 1.75}%` }} />
-            <span className={styles.densityThumb}
-              style={{ left: `${(vegetationDensity - 25) / 1.75}%` }} />
-          </span>
-        </button>
+        <RangeSlider label={t.plantDensity} value={vegetationDensity}
+          minimum={25} maximum={200} step={25}
+          disabled={busy || decorationBuildPresent}
+          formatValue={(value) => `${value}%`}
+          onChange={setVegetationDensity} />
         <strong>{vegetationDensity}%</strong>
       </div>
       <div className={styles.densityControl}>
         <span>{t.furnitureDensity}</span>
-        <button type="button" className={styles.densitySlider}
-          disabled={busy || decorationBuildPresent} role="slider"
-          aria-label={t.furnitureDensity} aria-valuemin={25} aria-valuemax={200}
-          aria-valuenow={furnitureDensity}
-          onMouseDown={(event) => updateDensity(event, setFurnitureDensity)}
-          onMouseMove={(event) => {
-            if ((event.buttons & 1) !== 0)
-              updateDensity(event, setFurnitureDensity);
-          }}>
-          <span className={styles.densityTrack}>
-            <span className={styles.densityFill}
-              style={{ width: `${(furnitureDensity - 25) / 1.75}%` }} />
-            <span className={styles.densityThumb}
-              style={{ left: `${(furnitureDensity - 25) / 1.75}%` }} />
-          </span>
-        </button>
+        <RangeSlider label={t.furnitureDensity} value={furnitureDensity}
+          minimum={25} maximum={200} step={25}
+          disabled={busy || decorationBuildPresent}
+          formatValue={(value) => `${value}%`}
+          onChange={setFurnitureDensity} />
         <strong>{furnitureDensity}%</strong>
       </div>
     </div>

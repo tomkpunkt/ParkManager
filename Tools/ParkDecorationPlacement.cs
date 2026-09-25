@@ -139,6 +139,12 @@ namespace ParkManager.Tools
                     : "Der aktuelle Bau wird noch von CS2 verarbeitet.");
                 return;
             }
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && _plazaPlan != null)
+            {
+                ReplanPlazaArrangement();
+                return;
+            }
             var seed = Guid.NewGuid().GetHashCode() & int.MaxValue;
             if (seed == 0) seed = 1;
             GenerateDecorationPlan(seed);
@@ -183,7 +189,9 @@ namespace ParkManager.Tools
                 return;
             }
             _furnitureDensity = density;
-            if (_decorationPlan != null) GenerateDecorationPlan(_decorationPlan.Seed);
+            if (_selectedSiteKind == ProceduralSiteKind.Plaza
+                && _plazaPlan != null) ReplanPlazaArrangement();
+            else if (_decorationPlan != null) GenerateDecorationPlan(_decorationPlan.Seed);
             else PublishDecorationState("Ausstattungsdichte geändert · noch nicht geplant.");
         }
 

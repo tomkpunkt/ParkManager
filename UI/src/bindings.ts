@@ -15,9 +15,15 @@ export const pathPlanReady$ = bindValue<boolean>(MOD, "PathPlanReady", false);
 export const pathBuildBusy$ = bindValue<boolean>(MOD, "PathBuildBusy", false);
 export const pathBuildPresent$ = bindValue<boolean>(MOD, "PathBuildPresent", false);
 export const pathBuildSummary$ = bindValue<string>(MOD, "PathBuildSummary", "");
+export type PathBuildStatus = "ok" | "warning" | "error";
+export const pathBuildStatus$ = bindValue<PathBuildStatus>(MOD, "PathBuildStatus", "ok");
 export const pathType$ = bindValue<number>(MOD, "PathType", 1);
 export const siteType$ = bindValue<number>(MOD, "SiteType", 0);
-export const plazaLayout$ = bindValue<number>(MOD, "PlazaLayout", 0);
+export const plazaCenterPlacement$ = bindValue<number>(MOD, "PlazaCenterPlacement", 0);
+export const plazaArrangementPlacement$ = bindValue<number>(MOD, "PlazaArrangementPlacement", 0);
+export const plazaCenterpieceSpacing$ = bindValue<number>(MOD, "PlazaCenterpieceSpacing", 20);
+export const plazaArrangementSpacing$ = bindValue<number>(MOD, "PlazaArrangementSpacing", 4);
+export const plazaFenceEnabled$ = bindValue<boolean>(MOD, "PlazaFenceEnabled", false);
 export const plazaCenterOptionsJson$ = bindValue<string>(MOD, "PlazaCenterOptionsJson", "[]");
 export const plazaCenterSelected$ = bindValue<string>(MOD, "PlazaCenterSelected", "");
 export const plazaArrangementJson$ = bindValue<string>(MOD, "PlazaArrangementJson", "[]");
@@ -37,12 +43,21 @@ export const selectedSnapMask$ = bindValue<number>("tool", "selectedSnapMask", 0
 export const togglePanel = () => trigger(MOD, "TogglePanel");
 export const toggleTool = () => trigger(MOD, "ToggleTool");
 export const clearPolygon = () => trigger(MOD, "ClearPolygon");
-export const togglePlannerMode = () => trigger(MOD, "TogglePlannerMode");
+export const setPlannerMode = (enabled: boolean) => trigger(MOD, "SetPlannerMode", enabled);
 export const generatePaths = () => trigger(MOD, "GeneratePaths");
 export const buildPaths = () => trigger(MOD, "BuildPaths");
 export const setPathType = (type: number) => trigger(MOD, "SetPathType", type);
 export const setSiteType = (type: number) => trigger(MOD, "SetSiteType", type);
-export const setPlazaLayout = (layout: number) => trigger(MOD, "SetPlazaLayout", layout);
+export const setPlazaCenterPlacement = (value: number) =>
+  trigger(MOD, "SetPlazaCenterPlacement", value);
+export const setPlazaArrangementPlacement = (value: number) =>
+  trigger(MOD, "SetPlazaArrangementPlacement", value);
+export const setPlazaCenterpieceSpacing = (value: number) =>
+  trigger(MOD, "SetPlazaCenterpieceSpacing", value);
+export const setPlazaArrangementSpacing = (value: number) =>
+  trigger(MOD, "SetPlazaArrangementSpacing", value);
+export const setPlazaFenceEnabled = (value: boolean) =>
+  trigger(MOD, "SetPlazaFenceEnabled", value);
 export const selectPlazaCenter = (name: string) =>
   trigger(MOD, "SelectPlazaCenter", name);
 export const editPlazaArrangement = (command: string) =>

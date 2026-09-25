@@ -364,14 +364,15 @@ namespace ParkManager.Tools
             }
         }
 
-        internal void TogglePlannerMode()
+        internal void SetPlannerMode(bool enabled)
         {
             if (PathBuildBusy || DecorationBuildBusy)
             {
                 PublishState("Der aktuelle Bau wird noch von CS2 verarbeitet.");
                 return;
             }
-            if (_plannerMode)
+            if (_plannerMode == enabled) return;
+            if (!enabled)
             {
                 if (HasBuiltPaths)
                 {

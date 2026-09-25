@@ -4,7 +4,7 @@ type Binding<T> = { key: string; initial: T };
 const values: Record<string, any> = {};
 const listeners = new Set<() => void>();
 let seed = 1;
-const recalculate = () => window.dispatchEvent(new CustomEvent('mock:recalculate',
+export const recalculate = () => window.dispatchEvent(new CustomEvent('mock:recalculate',
   { detail: { seed } }));
 const emit = () => listeners.forEach((listener) => listener());
 export const bindValue = <T,>(scope: string, name: string, initial: T): Binding<T> => {
@@ -32,12 +32,19 @@ export const scenario = (kind: 'empty' | 'outline' | 'paths' | 'decorated' | 'pl
     'ParkManager.PathPlanReady': kind === 'paths' || kind === 'decorated' || plaza,
     'ParkManager.PathBuildPresent': kind === 'decorated',
     'ParkManager.DecorationBuildPresent': false,
-    'ParkManager.DecorationPlanReady': kind === 'decorated',
+    'ParkManager.DecorationPlanReady': kind === 'decorated' || plaza,
     'ParkManager.SiteType': plaza ? 1 : 0,
-    'ParkManager.PathBuildSummary': '', 'ParkManager.DecorationSummary': '',
+    'ParkManager.PlazaCenterPlacement': 0,
+    'ParkManager.PlazaArrangementPlacement': 0,
+    'ParkManager.PlazaCenterpieceSpacing': 20,
+    'ParkManager.PlazaArrangementSpacing': 4,
+    'ParkManager.PlazaFenceEnabled': false,
+    'ParkManager.PathBuildSummary': '', 'ParkManager.PathBuildStatus': 'ok',
+    'ParkManager.DecorationSummary': '',
     'ParkManager.PlazaCenterSelected': plaza ? 'Mock Fountain' : '',
     'ParkManager.Locale': 'de',
   }); emit();
+  if (plaza) recalculate();
 };
 export const trigger = (scope: string, action: string, payload?: any) => {
   if (scope === 'tool') { values[`tool.selectedSnapMask`] = payload; emit(); return; }
@@ -45,12 +52,16 @@ export const trigger = (scope: string, action: string, payload?: any) => {
     case 'TogglePanel': case 'SetPanelOpen': set('PanelOpen', payload ?? !get('PanelOpen')); break;
     case 'ToggleTool': set('PanelOpen', !get('PanelOpen')); break;
     case 'ClearPolygon': scenario('empty'); break;
-    case 'TogglePlannerMode': set('PlannerMode', !get('PlannerMode')); break;
+    case 'SetPlannerMode': set('PlannerMode', payload); break;
     case 'SetPathType': set('PathType', payload); set('PathPlanReady', false); break;
     case 'SetSiteType': set('SiteType', payload); set('PathPlanReady', false); break;
-    case 'SetPlazaLayout': set('PlazaLayout', payload); set('PathPlanReady', false); break;
-    case 'SelectPlazaCenter': set('PlazaCenterSelected', payload); set('PathPlanReady', false); break;
-    case 'GeneratePaths': seed++; set('PathPlanReady', true); set('PathBuildSummary', `Mock-Seed ${seed}`); recalculate(); break;
+    case 'SetPlazaCenterPlacement': set('PlazaCenterPlacement', payload); replanPlaza(); break;
+    case 'SetPlazaArrangementPlacement': set('PlazaArrangementPlacement', payload); replanPlaza(); break;
+    case 'SetPlazaCenterpieceSpacing': set('PlazaCenterpieceSpacing', payload); replanPlaza(); break;
+    case 'SetPlazaArrangementSpacing': set('PlazaArrangementSpacing', payload); replanPlaza(); break;
+    case 'SetPlazaFenceEnabled': set('PlazaFenceEnabled', payload); replanPlaza(); break;
+    case 'SelectPlazaCenter': set('PlazaCenterSelected', payload); replanPlaza(); break;
+    case 'GeneratePaths': if (get('SiteType') !== 1) seed++; set('PathPlanReady', true); if (get('SiteType') === 1) set('DecorationPlanReady', true); set('PathBuildSummary', get('SiteType') === 1 ? 'Plaza-Regeln angewendet' : `Mock-Seed ${seed}`); recalculate(); break;
     case 'BuildPaths': set('PathBuildPresent', true); break;
     case 'RemoveBuiltPaths': set('PathBuildPresent', false); set('DecorationBuildPresent', false); set('DecorationPlanReady', false); break;
     case 'GenerateDecorations': seed++; set('DecorationPlanReady', true); set('DecorationSummary', `Mock-Seed ${seed}`); recalculate(); break;
@@ -58,7 +69,7 @@ export const trigger = (scope: string, action: string, payload?: any) => {
     case 'RemoveBuiltDecorations': set('DecorationBuildPresent', false); break;
     case 'FinishPark': scenario('empty'); break;
     case 'SetVegetationDensity': set('VegetationDensity', payload); set('DecorationPlanReady', false); break;
-    case 'SetFurnitureDensity': set('FurnitureDensity', payload); set('DecorationPlanReady', false); break;
+    case 'SetFurnitureDensity': set('FurnitureDensity', payload); if (get('SiteType') === 1) replanPlaza(); else set('DecorationPlanReady', false); break;
     case 'ToggleDecorationCategory': set('DecorationEnabledMask', get<number>('DecorationEnabledMask') ^ (1 << (payload - 1))); set('DecorationPlanReady', false); break;
     case 'EditPlazaArrangement': editArrangement(payload); break;
     case 'SelectAsset': selectAsset(payload); break;
@@ -75,7 +86,12 @@ function editArrangement(command: string) {
   if (action === 'asset' && items[index]) items[index].name = value;
   if (action === 'move' && items[index] && items[Number(value)])
     [items[index], items[Number(value)]] = [items[Number(value)], items[index]];
-  set('PlazaArrangementJson', JSON.stringify(items)); set('DecorationPlanReady', false);
+  set('PlazaArrangementJson', JSON.stringify(items)); replanPlaza();
+}
+function replanPlaza() {
+  if (get('SiteType') !== 1 || !get('PathPlanReady')) return;
+  set('DecorationPlanReady', true);
+  recalculate();
 }
 function selectAsset(payload: string) {
   const [category, multi, name] = payload.split('\n');
@@ -88,5 +104,6 @@ function selectAsset(payload: string) {
     : [...choice.selectedMany, name];
   else choice.selected = name;
   set('AssetOptionsJson', JSON.stringify(choices));
-  set('DecorationPlanReady', false);
+  if (get('SiteType') === 1) replanPlaza();
+  else set('DecorationPlanReady', false);
 }

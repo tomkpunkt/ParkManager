@@ -4,12 +4,17 @@ using Unity.Mathematics;
 namespace ParkManager.Geometry
 {
     /// <summary>Geometric arrangement used for a generated plaza.</summary>
-    internal enum PlazaLayoutMode : byte
+    internal enum PlazaCenterPlacementMode : byte
     {
-        Axial = 0,
-        Radial = 1,
-        Boundary = 2,
-        Open = 3,
+        Centered = 0,
+        Mirrored = 1,
+        MainAxis = 2,
+    }
+
+    internal enum PlazaArrangementPlacementMode : byte
+    {
+        AroundCenter = 0,
+        AlongBoundary = 1,
     }
 
     /// <summary>Marker kind for the plaza's reserved central feature.</summary>
@@ -78,19 +83,28 @@ namespace ParkManager.Geometry
     internal sealed class PlazaPlan
     {
         internal int Seed { get; }
-        internal PlazaLayoutMode LayoutMode { get; }
+        internal PlazaCenterPlacementMode CenterPlacement { get; }
+        internal PlazaArrangementPlacementMode ArrangementPlacement { get; }
+        internal float CenterpieceSpacing { get; }
+        internal float ArrangementSpacing { get; }
         internal bool HasCenterpiece => Centerpieces.Count > 0;
         internal IReadOnlyList<PlazaCenterpiecePlacement> Centerpieces { get; }
         internal IReadOnlyList<PlazaFurniturePlacement> Furniture { get; }
         internal IReadOnlyList<PlazaRoutingSegment> RoutingSegments { get; }
 
-        internal PlazaPlan(int seed, PlazaLayoutMode layoutMode,
+        internal PlazaPlan(int seed,
+            PlazaCenterPlacementMode centerPlacement,
+            PlazaArrangementPlacementMode arrangementPlacement,
+            float centerpieceSpacing, float arrangementSpacing,
             List<PlazaCenterpiecePlacement> centerpieces,
             List<PlazaFurniturePlacement> furniture,
             List<PlazaRoutingSegment> routingSegments)
         {
             Seed = seed;
-            LayoutMode = layoutMode;
+            CenterPlacement = centerPlacement;
+            ArrangementPlacement = arrangementPlacement;
+            CenterpieceSpacing = centerpieceSpacing;
+            ArrangementSpacing = arrangementSpacing;
             Centerpieces = centerpieces ?? new List<PlazaCenterpiecePlacement>();
             Furniture = furniture ?? new List<PlazaFurniturePlacement>();
             RoutingSegments = routingSegments ?? new List<PlazaRoutingSegment>();

@@ -6,6 +6,13 @@ using ParkManager.Assets;
 
 namespace ParkManager.Tools
 {
+    internal enum PathBuildStatus
+    {
+        Ok,
+        Warning,
+        Error,
+    }
+
     /// <summary>
     /// Bridge between the Cohtml interface and ParkManager simulation systems.
     /// It owns UI bindings only and forwards user actions to the world tool and
@@ -33,9 +40,14 @@ namespace ParkManager.Tools
         private ValueBinding<bool> _pathBuildBusy;
         private ValueBinding<bool> _pathBuildPresent;
         private ValueBinding<string> _pathBuildSummary;
+        private ValueBinding<string> _pathBuildStatus;
         private ValueBinding<int> _pathType;
         private ValueBinding<int> _siteType;
-        private ValueBinding<int> _plazaLayout;
+        private ValueBinding<int> _plazaCenterPlacement;
+        private ValueBinding<int> _plazaArrangementPlacement;
+        private ValueBinding<int> _plazaCenterpieceSpacing;
+        private ValueBinding<int> _plazaArrangementSpacing;
+        private ValueBinding<bool> _plazaFenceEnabled;
         private ValueBinding<string> _plazaCenterOptionsJson;
         private ValueBinding<string> _plazaCenterSelected;
         private ValueBinding<string> _plazaArrangementJson;
@@ -90,12 +102,22 @@ namespace ParkManager.Tools
                 Group, "PathBuildPresent", false));
             AddBinding(_pathBuildSummary = new ValueBinding<string>(
                 Group, "PathBuildSummary", "Noch keine Testwege gebaut."));
+            AddBinding(_pathBuildStatus = new ValueBinding<string>(
+                Group, "PathBuildStatus", "ok"));
             AddBinding(_pathType = new ValueBinding<int>(
                 Group, "PathType", (int)ParkPathType.Wide));
             AddBinding(_siteType = new ValueBinding<int>(
                 Group, "SiteType", (int)ProceduralSiteKind.Park));
-            AddBinding(_plazaLayout = new ValueBinding<int>(
-                Group, "PlazaLayout", 0));
+            AddBinding(_plazaCenterPlacement = new ValueBinding<int>(
+                Group, "PlazaCenterPlacement", 0));
+            AddBinding(_plazaArrangementPlacement = new ValueBinding<int>(
+                Group, "PlazaArrangementPlacement", 0));
+            AddBinding(_plazaCenterpieceSpacing = new ValueBinding<int>(
+                Group, "PlazaCenterpieceSpacing", 20));
+            AddBinding(_plazaArrangementSpacing = new ValueBinding<int>(
+                Group, "PlazaArrangementSpacing", 4));
+            AddBinding(_plazaFenceEnabled = new ValueBinding<bool>(
+                Group, "PlazaFenceEnabled", false));
             AddBinding(_plazaCenterOptionsJson = new ValueBinding<string>(
                 Group, "PlazaCenterOptionsJson", "[]"));
             AddBinding(_plazaCenterSelected = new ValueBinding<string>(
@@ -130,9 +152,9 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding(Group, "RefreshAssetCatalog",
                 () => World.GetOrCreateSystemManaged<ParkAssetCatalogSystem>()
                     .RequestRefresh()));
-            AddBinding(new TriggerBinding(Group, "TogglePlannerMode",
-                () => World.GetOrCreateSystemManaged<ParkToolSystem>()
-                    .TogglePlannerMode()));
+            AddBinding(new TriggerBinding<bool>(Group, "SetPlannerMode",
+                enabled => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPlannerMode(enabled)));
             AddBinding(new TriggerBinding(Group, "GeneratePaths",
                 () => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .GeneratePaths()));
@@ -145,9 +167,21 @@ namespace ParkManager.Tools
             AddBinding(new TriggerBinding<int>(Group, "SetSiteType",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .SetSiteKind(value)));
-            AddBinding(new TriggerBinding<int>(Group, "SetPlazaLayout",
+            AddBinding(new TriggerBinding<int>(Group, "SetPlazaCenterPlacement",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
-                    .SetPlazaLayout(value)));
+                    .SetPlazaCenterPlacement(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetPlazaArrangementPlacement",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPlazaArrangementPlacement(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetPlazaCenterpieceSpacing",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPlazaCenterpieceSpacing(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetPlazaArrangementSpacing",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPlazaArrangementSpacing(value)));
+            AddBinding(new TriggerBinding<bool>(Group, "SetPlazaFenceEnabled",
+                value => World.GetOrCreateSystemManaged<ParkToolSystem>()
+                    .SetPlazaFenceEnabled(value)));
             AddBinding(new TriggerBinding<string>(Group, "SelectPlazaCenter",
                 value => World.GetOrCreateSystemManaged<ParkToolSystem>()
                     .SelectPlazaCenter(value)));
@@ -246,18 +280,29 @@ namespace ParkManager.Tools
             _pathPlanReady?.Update(pathPlanReady);
         }
 
-        internal void SetPathBuildState(bool busy, bool present, string summary)
+        internal void SetPathBuildState(bool busy, bool present, string summary,
+            PathBuildStatus status)
         {
             _pathBuildBusy?.Update(busy);
             _pathBuildPresent?.Update(present);
             _pathBuildSummary?.Update(summary);
+            _pathBuildStatus?.Update(status.ToString().ToLowerInvariant());
         }
 
         internal void SetPathType(int type) => _pathType?.Update(type);
 
         internal void SetSiteType(int type) => _siteType?.Update(type);
 
-        internal void SetPlazaLayout(int layout) => _plazaLayout?.Update(layout);
+        internal void SetPlazaPlacementSettings(int centerPlacement,
+            int arrangementPlacement, int centerpieceSpacing,
+            int arrangementSpacing, bool fenceEnabled)
+        {
+            _plazaCenterPlacement?.Update(centerPlacement);
+            _plazaArrangementPlacement?.Update(arrangementPlacement);
+            _plazaCenterpieceSpacing?.Update(centerpieceSpacing);
+            _plazaArrangementSpacing?.Update(arrangementSpacing);
+            _plazaFenceEnabled?.Update(fenceEnabled);
+        }
 
         internal void SetPlazaArrangement(string json)
             => _plazaArrangementJson?.Update(json ?? "[]");

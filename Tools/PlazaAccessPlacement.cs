@@ -63,14 +63,21 @@ namespace ParkManager.Tools
             _plazaNavigationPrefab = FindPlazaPrefab(_plazaNavigationPrefabQuery,
                 new[] { "Pedestrian Area", "Walking Area", "Pathfinding Area",
                     "Pedestrian Pathfinding Area" }, true);
-            _plazaAccessPrefab = FindPlazaPrefab(_plazaAccessPrefabQuery,
-                new[] { "Pedestrian Access Location" },
-                false);
+            ResolvePedestrianAccessMarkerPrefab();
             _usesSurfaceFallback = false;
             _selectedPathWidth = 0f;
             _selectedPathPrefabName = "Plaza-Navigationsfläche";
             return _plazaNavigationPrefab != Entity.Null
                 && _plazaAccessPrefab != Entity.Null;
+        }
+
+        private bool ResolvePedestrianAccessMarkerPrefab()
+        {
+            if (_plazaAccessPrefab != Entity.Null
+                && EntityManager.Exists(_plazaAccessPrefab)) return true;
+            _plazaAccessPrefab = FindPlazaPrefab(_plazaAccessPrefabQuery,
+                new[] { "Pedestrian Access Location" }, false);
+            return _plazaAccessPrefab != Entity.Null;
         }
 
         private Entity FindPlazaPrefab(EntityQuery query, string[] names,
@@ -163,7 +170,7 @@ namespace ParkManager.Tools
                 _expectedPlazaAccessMarkers = 0;
                 for (var i = 0; i < _entrances.Count; i++)
                 {
-                    if (!CreatePlazaAccessMarker(_entrances[i], ref terrain))
+                    if (!CreatePedestrianAccessMarker(_entrances[i], ref terrain))
                         throw new InvalidOperationException($"Zugang {i + 1} konnte nicht platziert werden.");
                     _expectedPlazaAccessMarkers++;
                 }
@@ -206,7 +213,7 @@ namespace ParkManager.Tools
             return true;
         }
 
-        private bool CreatePlazaAccessMarker(float3 entrance,
+        private bool CreatePedestrianAccessMarker(float3 entrance,
             ref TerrainHeightData terrain)
         {
             if (!TryGetPlazaAccessPosition(entrance.xz,
@@ -231,7 +238,7 @@ namespace ParkManager.Tools
             objectDefinition.m_Intensity = 1f;
             objectDefinition.m_ParentMesh = -1;
             EntityManager.AddComponentData(definition, objectDefinition);
-            Mod.Log.Info($"ParkManager plaza access marker planned at "
+            Mod.Log.Info($"ParkManager pedestrian access marker planned at "
                 + $"{point} ({math.distance(entrance.xz, inside):F2} m "
                 + "inside the entrance boundary).");
             return true;
@@ -389,8 +396,15 @@ namespace ParkManager.Tools
                             ParkPathMemberKind.ParkSurface, ref nextId))
                         surfaceCount++;
                 }
-            using var markers = _permanentPlazaAccessQuery
-                .ToEntityArray(Allocator.TempJob);
+            markerCount = TagMaterializedAccessMarkers(park);
+        }
+
+        private int TagMaterializedAccessMarkers(Entity park)
+        {
+            if (park == Entity.Null || !EntityManager.Exists(park)) return 0;
+            var markerCount = 0;
+            var nextId = NextMemberElementId(park);
+            using var markers = _permanentPlazaAccessQuery.ToEntityArray(Allocator.TempJob);
             for (var i = 0; i < markers.Length; i++)
             {
                 var entity = markers[i];
@@ -402,6 +416,7 @@ namespace ParkManager.Tools
                         ParkPathMemberKind.AccessMarker, ref nextId)) continue;
                 markerCount++;
             }
+            return markerCount;
         }
 
         private void ClearPlazaAccessBaseline()

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Configurations>Debug;Release</Configurations>
     <TargetFramework>net48</TargetFramework>
-    <Version>0.5.0</Version>
+    <Version>0.5.5</Version>
     <CS2ToolPath Condition="'$(CSII_TOOLPATH)' != ''">$(CSII_TOOLPATH)</CS2ToolPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>
     <PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>

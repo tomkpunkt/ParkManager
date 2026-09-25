@@ -1,18 +1,18 @@
 <Publish>
   <ModId Value="" />
   <DisplayName Value="ParkManager" />
-  <ShortDescription Value="Draw a polygon and generate a configurable park from internal game assets." />
+  <ShortDescription Value="Design and build editable parks and plazas with custom surfaces, asset mixes and precise placement rules." />
   <LongDescription>
-ParkManager is a procedural park generator for Cities: Skylines II. This is an early development build.
+ParkManager lets you draw park and plaza outlines, mark entrances, choose game assets and preview procedural layouts before building them as editable Cities: Skylines II entities.
   </LongDescription>
   <Thumbnail Value="Properties/Thumbnail.png" />
   <Tag Value="Code Mod" />
   <ForumLink Value="" />
-  <ModVersion Value="0.5.0" />
+  <ModVersion Value="0.5.5" />
   <GameVersion Value="1.6.*" />
   <Dependency Id="74417" />
   <Dependency Id="79634" />
   <RequiredDLC Value="" />
-  <ChangeLog>Plan and build a grass surface, trees, bushes, benches, lamps and an optional gated fence from selectable Vanilla assets.</ChangeLog>
+  <ChangeLog>Build configurable parks and plazas. Includes plaza centerpiece and arrangement rules, editable five-slot furniture arrangements, selectable surfaces and fences, asset chooser fixes, working density controls, and improved placement previews.</ChangeLog>
   <AccessLevel Value="Private" />
 </Publish>

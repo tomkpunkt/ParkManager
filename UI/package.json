@@ -1,7 +1,7 @@
 {
   "name": "park-manager-ui",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.5",
   "main": "build/index.js",
   "engines": {
     "node": ">=18"

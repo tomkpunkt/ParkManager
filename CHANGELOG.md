@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.5.5 – preview.1
+
+- Add a rule-based Plaza Builder: place one, mirrored, or axis-aligned centerpieces; arrange furniture around the center or boundary; tune clearances; and optionally build without a centerpiece.
+- Create and order custom Plaza furniture arrangements of up to five Vanilla assets, then preview and build the complete arrangement as a unit.
+- Build Plaza access markers and surfaces, with optional fences, alongside the procedural Park workflow.
+- Restore missing in-game asset choices when thumbnails are unavailable, fix slider interaction in the game UI, and enlarge surface, centerpiece, and fence previews.
+- Refine the shared workflow layout and expose placement diagnostics before construction.
+
+### Detailed changes
 
 - Use the full measured mesh footprint for plaza center previews and fit checks;
   reject building-like prefabs needing road access and composite prefabs whose

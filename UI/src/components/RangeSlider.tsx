@@ -18,10 +18,12 @@ type Props = {
 export const RangeSlider = ({ label, value, minimum, maximum, step = 1,
   disabled = false, className = styles.densitySlider, testId,
   formatValue = (next) => String(next), onChange }: Props) => {
-  const activePointer = useRef<number | null>(null);
+  // Cohtml does not consistently dispatch Pointer Events or implement pointer
+  // capture. Mouse events are supported by both the game UI and browsers.
+  const mouseActive = useRef(false);
   const clamp = (next: number) => Math.max(minimum,
     Math.min(maximum, minimum + Math.round((next - minimum) / step) * step));
-  const updateFromPointer = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const updateFromMouse = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1,
       (event.clientX - rect.left) / Math.max(1, rect.width)));
@@ -47,22 +49,21 @@ export const RangeSlider = ({ label, value, minimum, maximum, step = 1,
     aria-label={label} aria-valuemin={minimum} aria-valuemax={maximum}
     aria-valuenow={value} aria-valuetext={formatValue(value)}
     onKeyDown={handleKeyDown}
-    onPointerDown={(event) => {
-      if (disabled || !event.isPrimary) return;
-      activePointer.current = event.pointerId;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      updateFromPointer(event);
+    onMouseDown={(event) => {
+      if (disabled || event.button !== 0) return;
+      mouseActive.current = true;
+      updateFromMouse(event);
     }}
-    onPointerMove={(event) => {
-      if (activePointer.current === event.pointerId) updateFromPointer(event);
+    onMouseMove={(event) => {
+      if (mouseActive.current || (event.buttons & 1) !== 0)
+        updateFromMouse(event);
     }}
-    onPointerUp={(event) => {
-      if (activePointer.current !== event.pointerId) return;
-      updateFromPointer(event);
-      activePointer.current = null;
+    onMouseUp={(event) => {
+      if (!mouseActive.current && (event.buttons & 1) === 0) return;
+      updateFromMouse(event);
+      mouseActive.current = false;
     }}
-    onPointerCancel={() => { activePointer.current = null; }}
-    onLostPointerCapture={() => { activePointer.current = null; }}>
+    onMouseLeave={() => { mouseActive.current = false; }}>
     <span className={styles.densityTrack}>
       <span className={styles.densityFill}
         style={{ width: `${(value - minimum) / (maximum - minimum) * 100}%` }} />

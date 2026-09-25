@@ -25,7 +25,8 @@ export const plazaAssetCategories = assetCategories.map((item) =>
 
 export type AssetCategory = typeof assetCategories[number];
 
-/** Parses the version-tolerant JSON bridge and rejects unusable icon tiles. */
+/** Parses the version-tolerant JSON bridge. An icon is optional because many
+ * valid game prefabs do not expose a UIObject icon or thumbnail. */
 export const parseAssetChoices = (json: string): AssetChoiceMap => {
   try {
     const parsed = JSON.parse(json);
@@ -49,7 +50,7 @@ export const parseAssetChoices = (json: string): AssetChoiceMap => {
               icon: typeof (option as any)?.icon === "string"
                 ? (option as any).icon : "",
             }).filter((option: AssetChoiceOption) =>
-              option.name.trim().length > 0 && option.icon.trim().length > 0),
+              option.name.trim().length > 0),
       };
     });
     return result;

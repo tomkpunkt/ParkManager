@@ -155,6 +155,28 @@ test('shared plaza sliders support arrow, home, end, and page keys', async ({ pa
   await expect(slider).toHaveAttribute('aria-valuenow', '10');
 });
 
+test('shared sliders react to game-compatible mouse events in every workflow', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'decorated', exact: true }).click();
+  const plantDensity = page.getByRole('slider', { name: 'Pflanzendichte' });
+  await plantDensity.click({ position: { x: 1, y: 10 } });
+  await expect(plantDensity).toHaveAttribute('aria-valuenow', '25');
+  const furnitureDensity = page.getByRole('slider', { name: 'Ausstattungsdichte' });
+  const furnitureBox = await furnitureDensity.boundingBox();
+  await furnitureDensity.click({ position: { x: furnitureBox!.width - 2, y: 10 } });
+  await expect(furnitureDensity).toHaveAttribute('aria-valuenow', '200');
+
+  await page.getByRole('button', { name: 'plaza', exact: true }).click();
+  const arrangementSpacing = page.getByRole('slider', { name: /Abstand zum Zentrum/ });
+  const spacingBox = await arrangementSpacing.boundingBox();
+  await arrangementSpacing.click({ position: { x: spacingBox!.width - 2, y: 10 } });
+  await expect(arrangementSpacing).toHaveAttribute('aria-valuenow', '20');
+  await page.getByTestId('panel-footer').locator('button').last().click();
+  const arrangementDensity = page.getByRole('slider', { name: 'Arrangement-Dichte' });
+  await arrangementDensity.click({ position: { x: 1, y: 10 } });
+  await expect(arrangementDensity).toHaveAttribute('aria-valuenow', '25');
+});
+
 test('shipped panel CSS avoids unsupported CSS Grid', async ({ page }) => {
   const response = await page.request.get('/dist/mock.css');
   expect(response.ok()).toBeTruthy();
@@ -184,6 +206,12 @@ test('asset columns use stable flex layout with uniform gaps', async ({ page }) 
   expect(Math.abs(grid.width - chooser.width)).toBeLessThan(2);
   const tiles = await page.getByTestId('asset-grid').locator('[role="button"]').all();
   expect(tiles).toHaveLength(6);
+  const treeChoices = page.getByTestId('asset-chooser').getByRole('button');
+  await expect(treeChoices).toHaveCount(18);
+  const iconlessTree = page.getByRole('button', { name: 'Baum 1', exact: true });
+  await expect(iconlessTree).toBeVisible();
+  await expect(iconlessTree.locator('img')).toHaveCount(0);
+  await expect(iconlessTree).toContainText('✦');
   const tileBoxes = await Promise.all(tiles.map((tile) => tile.boundingBox()));
   expect(Math.abs(tileBoxes[0]!.y - tileBoxes[2]!.y)).toBeLessThan(2);
   expect(tileBoxes[3]!.y).toBeGreaterThan(tileBoxes[0]!.y + 50);
@@ -332,14 +360,18 @@ test('plaza fence sits left and the surface selector follows geometry', async ({
     .getByTestId('plaza-fence-group')).toBeVisible();
   await expect(settingsPanel.getByTestId('plaza-surface-group')).toBeVisible();
   expect(await settingsPanel.getByTestId('plaza-surface-group').count()).toBe(1);
-  expect(centerTile?.width).toBeCloseTo(36, 0);
-  expect(centerTile?.height).toBeCloseTo(36, 0);
-  expect(surfaceTile?.width).toBeCloseTo(36, 0);
-  expect(surfaceTile?.height).toBeCloseTo(36, 0);
+  expect(centerTile?.width).toBeCloseTo(48, 0);
+  expect(centerTile?.height).toBeCloseTo(48, 0);
+  expect(surfaceTile?.width).toBeCloseTo(48, 0);
+  expect(surfaceTile?.height).toBeCloseTo(48, 0);
   const fenceTile = await page.getByTestId('plaza-fence-choices')
     .locator('button').first().boundingBox();
-  expect(fenceTile?.width).toBeCloseTo(36, 0);
-  expect(fenceTile?.height).toBeCloseTo(36, 0);
+  expect(fenceTile?.width).toBeCloseTo(48, 0);
+  expect(fenceTile?.height).toBeCloseTo(48, 0);
+  await expect(page.getByRole('button', { name: 'Mock Center 2', exact: true }))
+    .toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zaun 1', exact: true }))
+    .toBeVisible();
   expect(await page.getByTestId('plaza-asset-selectors').locator('svg').count()).toBe(0);
   expect(await settingsPanel.locator('svg').count()).toBe(5);
   const backIcon = page.getByRole('button', { name: 'Umriss bearbeiten' })
@@ -377,8 +409,8 @@ test('park and plaza surface selectors share the Plaza layout without info badge
     (await pathSettings.boundingBox())!.x);
   const parkTile = await parkSurface.locator('button').first().boundingBox();
   const parkGap = await parkSurface.evaluate((element) => getComputedStyle(element).gap);
-  expect(parkTile?.width).toBeCloseTo(36, 0);
-  expect(parkTile?.height).toBeCloseTo(36, 0);
+  expect(parkTile?.width).toBeCloseTo(48, 0);
+  expect(parkTile?.height).toBeCloseTo(48, 0);
 
   const selectedSurface = parkSurface.getByRole('button', { name: 'Gras 1', exact: true });
   await selectedSurface.click();

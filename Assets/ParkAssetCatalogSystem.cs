@@ -159,8 +159,9 @@ namespace ParkManager.Assets
         }
 
         /// <summary>
-        /// Compact picker data for the single central fountain/statue selector.
-        /// Only visible, named center-piece prefabs with an icon are included.
+        /// Compact picker data for the central fountain/statue selector.
+        /// Valid named prefabs remain selectable even when CS2 exposes no
+        /// UIObject icon; the frontend renders a deterministic fallback tile.
         /// </summary>
         internal string GetPlazaCenterOptionsJson(
             IReadOnlyList<float2> polygon = null)
@@ -889,8 +890,7 @@ namespace ParkManager.Assets
 
         private static bool IsUiChoice(ParkAssetChoice choice)
             => choice != null
-                && !string.IsNullOrWhiteSpace(choice.Name)
-                && !string.IsNullOrWhiteSpace(choice.Icon);
+                && !string.IsNullOrWhiteSpace(choice.Name);
 
         private string BuildParkPaletteOptionsJson()
         {

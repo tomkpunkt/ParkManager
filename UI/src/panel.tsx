@@ -96,8 +96,7 @@ export const ParkManagerPanel = () => {
   const decorationBuildPresent = useValue(decorationBuildPresent$);
   const assetChoices = parseAssetChoices(useValue(assetOptionsJson$));
   const surfaceChoice = assetChoices.surface;
-  const visibleSurfaces = (surfaceChoice?.options ?? []).filter((option) =>
-    !failedSurfaceIcons[option.icon]);
+  const visibleSurfaces = surfaceChoice?.options ?? [];
   const fenceChoice = assetChoices.fence;
 
   const busy = pathBuildBusy || decorationBuildBusy;
@@ -147,10 +146,14 @@ export const ParkManagerPanel = () => {
               ? styles.surfaceChoiceActive : ""}
             disabled={busy || pathBuildPresent}
             onClick={() => selectAsset("Surface", option.name)}>
-            <img src={option.icon} alt=""
-              onError={() => setFailedSurfaceIcons((current) =>
-                current[option.icon] ? current
-                  : { ...current, [option.icon]: true })} />
+            {option.icon && !failedSurfaceIcons[option.icon]
+              ? <img src={option.icon} alt=""
+                  onError={() => setFailedSurfaceIcons((current) =>
+                    current[option.icon] ? current
+                      : { ...current, [option.icon]: true })} />
+              : <span className={styles.plazaCenterFallback} aria-hidden="true">
+                  {option.name.charAt(0).toUpperCase()}
+                </span>}
           </button>
         ))}
       </div>

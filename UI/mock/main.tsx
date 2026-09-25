@@ -29,11 +29,15 @@ for (const [key, label, color] of [
 ] as const) {
   choices[key] = { selected: '', selectedMany: [], options: Array.from({ length: key === 'surface' ? 11 : 15 }, (_, n) =>
     ({ name: `${label} ${n + 1}`, icon: icon(label[0], color) })) };
+  // Real CS2 catalogs contain valid prefabs without UIObject icons. Keep one
+  // in every mock category to prevent regressions that hide those choices.
+  choices[key].options[0].icon = '';
 }
 set('AssetOptionsJson', JSON.stringify(choices));
 set('PlazaCenterOptionsJson', JSON.stringify(Array.from({ length: 23 }, (_, index) => ({
   name: index === 0 ? 'Mock Fountain' : `Mock Center ${index + 1}`,
-  icon: icon(index === 0 ? 'F' : 'S', index === 0 ? '#3b9bad' : '#b4a37a'),
+  icon: index === 1 ? ''
+    : icon(index === 0 ? 'F' : 'S', index === 0 ? '#3b9bad' : '#b4a37a'),
 }))));
 set('PlazaArrangementJson', JSON.stringify([{ kind: 0, name: 'Bank 1' }]));
 scenario('empty');

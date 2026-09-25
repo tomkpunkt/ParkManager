@@ -44,8 +44,7 @@ export const PlazaArrangementEditor = ({ t, choices, busy, density,
   const current = arrangement[Math.min(selected, arrangement.length - 1)];
   const selectedIndex = Math.min(selected, arrangement.length - 1);
   const category = kinds.find((kind) => kind.kind === current?.kind) || kinds[0];
-  const options = (choices[category.key]?.options || []).filter((option) =>
-    !failedIcons[option.icon]);
+  const options = choices[category.key]?.options || [];
   const selectedOption = options.find((option) => option.name === current?.name);
 
   useEffect(() => { if (gridRef.current) gridRef.current.scrollTop = 0; },
@@ -88,14 +87,14 @@ export const PlazaArrangementEditor = ({ t, choices, busy, density,
             const kind = kinds.find((candidate) => candidate.kind === item.kind)
               || kinds[0];
             const asset = choices[kind.key]?.options.find((option) =>
-              option.name === item.name && !failedIcons[option.icon]);
+              option.name === item.name);
             return <button key={index} type="button"
               className={`${styles.plazaArrangementSlot} ${index === selectedIndex
                 ? styles.plazaArrangementSlotActive : ""}`}
               aria-pressed={index === selectedIndex}
               onClick={() => setSelected(index)}>
               <span>{index + 1}</span>
-              {asset ? <img src={asset.icon} alt=""
+              {asset?.icon && !failedIcons[asset.icon] ? <img src={asset.icon} alt=""
                 onError={() => setFailedIcons((state) => ({ ...state,
                   [asset.icon]: true }))} />
                 : <b>{t.categories[kind.key].charAt(0)}</b>}
@@ -140,9 +139,11 @@ export const PlazaArrangementEditor = ({ t, choices, busy, density,
               disabled={busy} title={option.name} aria-label={option.name}
               aria-pressed={option.name === current?.name}
               onClick={() => send("asset", selectedIndex, option.name)}>
-              <img className={styles.assetChoiceIcon} src={option.icon} alt=""
-                onError={() => setFailedIcons((state) => ({ ...state,
-                  [option.icon]: true }))} />
+              {option.icon && !failedIcons[option.icon]
+                ? <img className={styles.assetChoiceIcon} src={option.icon} alt=""
+                    onError={() => setFailedIcons((state) => ({ ...state,
+                      [option.icon]: true }))} />
+                : <span className={styles.assetChoiceFallback}>✦</span>}
               <span className={styles.assetChoiceName}>{option.name}</span>
               {option.name === current?.name
                 ? <span className={styles.assetChoiceCheck}>✓</span> : null}

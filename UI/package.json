@@ -10,6 +10,7 @@
     "build": "webpack",
     "dev": "webpack --watch",
     "mock:build": "webpack --config mock/webpack.config.js",
+    "mock:start": "powershell -NoProfile -ExecutionPolicy Bypass -File mock/run-mock.ps1",
     "test:ui": "powershell -NoProfile -ExecutionPolicy Bypass -File mock/run-tests.ps1"
   },
   "dependencies": {

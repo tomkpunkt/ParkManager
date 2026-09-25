@@ -27,7 +27,7 @@ ParkManager previews planned placements on the map before construction. Built pa
 
 ParkManager is under active development. See the [changelog](CHANGELOG.md) for recent changes and development history.
 
-### Requirements
+### In-game build requirements
 
 - Official Cities: Skylines II modding toolchain
 - `CSII_TOOLPATH` and `CSII_USERDATAPATH` configured by that toolchain
@@ -35,6 +35,25 @@ ParkManager is under active development. See the [changelog](CHANGELOG.md) for r
 - Node.js 18 or newer
 
 The mod has no third-party runtime assembly dependencies.
+
+### Test without the game
+
+The browser mock and geometry checks do not require Cities: Skylines II, its
+modding tools, or `CSII_TOOLPATH`. On a Windows development machine, install
+the .NET 8 SDK and Node.js 18 or newer, then run:
+
+```powershell
+cd UI
+npm ci
+npm run mock:start
+```
+
+Open `http://localhost:8765/`. The mock uses the production C# planning sources,
+but simulates the game's bindings and assets. For automated UI tests, install
+Playwright's browser once with `npx playwright install chromium`, then run
+`npm run test:ui`. The test host restores `UnityMathematics.NoDeps` from NuGet;
+it does not use a DLL from a game or modding-tool installation. See
+[tests/README.md](tests/README.md) for coverage and limitations.
 
 ### Build and deploy
 
@@ -53,7 +72,8 @@ The browser mock renders the real UI components without launching the game. To b
 
 ```powershell
 cd UI
-npm install
+npm ci
+npx playwright install chromium
 npm run test:ui
 ```
 

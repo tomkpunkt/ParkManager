@@ -83,18 +83,84 @@ for (var index = 0; index < count; index++)
         if (!Inside(center.Position)
             || BoundaryDistance(center.Position) < center.Radius - 0.001f)
             errors.Add("Centerpiece footprint outside bounds");
-    for (var i = 0; i + 1 < plan.Furniture.Count; i += 2)
+    if (arrangementPlacement == PlazaArrangementPlacementMode.AlongBoundary)
     {
-        var first = plan.Furniture[i];
-        var second = plan.Furniture[i + 1];
-        if (first.ArrangementId != second.ArrangementId || first.Kind != second.Kind)
-            errors.Add("Arrangement pair was split");
-        CheckFacingCenter(first);
-        CheckFacingCenter(second);
-        if (i >= 2 && math.distance(
-            (first.Position + second.Position) * 0.5f,
-            (plan.Furniture[0].Position + plan.Furniture[1].Position) * 0.5f) > 0.01f)
-            errors.Add("Arrangement pairs are not mirrored around one center");
+        // The L-shaped case is intentionally asymmetric. Other batch shapes
+        // have a mirror axis and must keep each boundary group mirrored.
+        var mirrored = index % 5 != 1;
+        var expectedGroupSize = arrangement.Count * (mirrored ? 2 : 1);
+        foreach (var group in plan.Furniture.GroupBy(item => item.ArrangementId))
+        {
+            var items = group.ToArray();
+            if (items.Length != expectedGroupSize)
+                errors.Add("Boundary arrangement has the wrong group size");
+            for (var i = 0; i < items.Length; i++)
+            {
+                if (BoundaryDistance(items[i].Position)
+                    > arrangementSpacing + 1.6f)
+                    errors.Add("Boundary furniture does not follow an edge");
+                CheckFacingBoundary(items[i]);
+            }
+            if (!mirrored) continue;
+            for (var i = 0; i + 1 < items.Length; i += 2)
+            {
+                var first = items[i];
+                var second = items[i + 1];
+                var polygonHeight = index % 5 == 4 ? height * .32f : height;
+                var reflectedAcrossHorizontal = new float2(first.Position.x,
+                    polygonHeight - first.Position.y);
+                var reflectedAcrossVertical = new float2(width - first.Position.x,
+                    first.Position.y);
+                var positionMatches = math.distance(reflectedAcrossHorizontal,
+                    second.Position) <= 0.1f || math.distance(
+                    reflectedAcrossVertical, second.Position) <= 0.1f;
+                if (first.Kind != second.Kind
+                    || !positionMatches)
+                    errors.Add("Symmetric polygon has an unmirrored boundary pair");
+            }
+        }
+    }
+    else
+    {
+        var groups = plan.Furniture.GroupBy(item => item.ArrangementId)
+            .Select(group => group.ToArray()).ToArray();
+        if (groups.Length > 1)
+        {
+            var circleCenter = (plan.Furniture[0].Position
+                + plan.Furniture[1].Position) * 0.5f;
+            var angles = groups.Select(group => {
+                var anchor = float2.zero;
+                for (var i = 0; i < group.Length; i += 2)
+                    anchor += group[i].Position;
+                anchor /= group.Length / 2;
+                var delta = anchor - circleCenter;
+                var angle = math.atan2(delta.y, delta.x);
+                if (angle < 0f) angle += math.PI;
+                if (angle >= math.PI) angle -= math.PI;
+                return angle;
+            }).OrderBy(angle => angle).ToArray();
+            var expectedStep = math.PI / groups.Length;
+            for (var i = 0; i < angles.Length; i++)
+            {
+                var next = i + 1 < angles.Length
+                    ? angles[i + 1] : angles[0] + math.PI;
+                if (math.abs(next - angles[i] - expectedStep) > 0.01f)
+                    errors.Add("Circular arrangements are not evenly spaced");
+            }
+        }
+        for (var i = 0; i + 1 < plan.Furniture.Count; i += 2)
+        {
+            var first = plan.Furniture[i];
+            var second = plan.Furniture[i + 1];
+            if (first.ArrangementId != second.ArrangementId || first.Kind != second.Kind)
+                errors.Add("Arrangement pair was split");
+            CheckFacingCenter(first);
+            CheckFacingCenter(second);
+            if (i >= 2 && math.distance(
+                (first.Position + second.Position) * 0.5f,
+                (plan.Furniture[0].Position + plan.Furniture[1].Position) * 0.5f) > 0.01f)
+                errors.Add("Arrangement pairs are not mirrored around one center");
+        }
     }
     var replay = PlazaPlanner.Generate(polygon, gates, radius,
         centerPlacement, arrangementPlacement, centerpieceSpacing,
@@ -136,7 +202,75 @@ for (var index = 0; index < count; index++)
         if (math.dot(forward, towardCenter) < 0.75f)
             errors.Add($"{item.Kind} faces away from its arrangement center");
     }
+    void CheckFacingBoundary(PlazaFurniturePlacement item)
+    {
+        if (item.Kind == PlazaFurnitureKind.Bush) return;
+        var forward = new float2(math.sin(item.Rotation),
+            math.cos(item.Rotation));
+        var facesAnEdge = false;
+        for (var i = 0; i < polygon.Count; i++)
+        {
+            var a = polygon[i];
+            var edge = polygon[(i + 1) % polygon.Count] - a;
+            var lengthSquared = math.lengthsq(edge);
+            if (lengthSquared < 0.0001f) continue;
+            var t = math.clamp(math.dot(item.Position - a, edge)
+                / lengthSquared, 0f, 1f);
+            var distance = math.distancesq(item.Position, a + edge * t);
+            var inward = math.normalizesafe(new float2(-edge.y, edge.x));
+            if (math.sqrt(distance) > arrangementSpacing + 1.6f
+                || math.dot(forward, inward) < 0.75f) continue;
+            facesAnEdge = true;
+            break;
+        }
+        if (!facesAnEdge)
+            errors.Add($"{item.Kind} does not face inward from the edge");
+    }
 }
+// Exercise a rotated regular polygon whose mirror axes do not align with X/Y.
+var regularPolygon = Enumerable.Range(0, 5).Select(i => {
+    var angle = 0.31f + i * 2f * math.PI / 5f;
+    return new float2(50f + 40f * math.cos(angle),
+        50f + 40f * math.sin(angle));
+}).ToList();
+var regularArrangement = new List<PlazaArrangementItem> {
+    new() { Kind = PlazaFurnitureKind.Bench, AssetName = "MockBench",
+        FootprintRadius = 0.8f, Size = 1.6f },
+};
+var regularPlan = PlazaPlanner.Generate(regularPolygon,
+    new List<float2> { regularPolygon[0] }, 2.5f,
+    PlazaCenterPlacementMode.Centered,
+    PlazaArrangementPlacementMode.AlongBoundary, 20f, 3f, 100, 1,
+    true, regularArrangement);
+if (regularPlan.Furniture.Count == 0
+    || regularPlan.Furniture.GroupBy(item => item.ArrangementId)
+        .Any(group => group.Count() != 2))
+    failures.Add("Rotated mirror-symmetric polygon lost paired edge furniture");
+var openSquare = new List<float2> {
+    new(0f, 0f), new(400f, 0f), new(400f, 400f), new(0f, 400f),
+};
+var expectedCirclePairs = new[] { 1, 2, 3, 4, 6, 8, 10, 12 };
+for (var level = 0; level < expectedCirclePairs.Length; level++)
+{
+    var density = (level + 1) * 25;
+    var circlePlan = PlazaPlanner.Generate(openSquare,
+        Array.Empty<float2>(), 2.5f,
+        PlazaCenterPlacementMode.Centered,
+        PlazaArrangementPlacementMode.AroundCenter, 20f, 4f, density, 1,
+        true, regularArrangement);
+    if (circlePlan.Furniture.Count != expectedCirclePairs[level] * 2)
+        failures.Add($"{density}% did not produce its complete circular ring");
+}
+var fiveItemArrangement = Enumerable.Range(0, 5).Select(_ =>
+    new PlazaArrangementItem { Kind = PlazaFurnitureKind.Bench,
+        AssetName = "MockBench", FootprintRadius = 0.8f, Size = 1.6f })
+    .ToList();
+var cappedCircle = PlazaPlanner.Generate(openSquare,
+    Array.Empty<float2>(), 2.5f, PlazaCenterPlacementMode.Centered,
+    PlazaArrangementPlacementMode.AroundCenter, 20f, 4f, 200, 1,
+    true, fiveItemArrangement);
+if (cappedCircle.Furniture.Count != 60)
+    failures.Add("Furniture cap did not yield six complete circular pairs");
 var report = new { count, failed = failures.Count, failures, cases };
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 File.WriteAllText(output, JsonSerializer.Serialize(report,

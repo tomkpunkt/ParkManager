@@ -15,8 +15,6 @@
     <Compile Include="../../Geometry/ParkPathPlanner.cs" Link="ParkPathPlanner.cs" />
     <Compile Include="../../Geometry/ParkDecorationPlan.cs" Link="ParkDecorationPlan.cs" />
     <Compile Include="../../Geometry/ParkDecorationPlanner.cs" Link="ParkDecorationPlanner.cs" />
-    <Reference Include="Unity.Mathematics">
-      <HintPath>C:\Program Files\Studio 2.0\Studio_Data\Managed\Unity.Mathematics.dll</HintPath>
-    </Reference>
+    <PackageReference Include="UnityMathematics.NoDeps" Version="1.3.2" />
   </ItemGroup>
 </Project>

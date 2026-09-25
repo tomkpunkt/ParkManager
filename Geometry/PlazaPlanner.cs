@@ -5,7 +5,8 @@ using Unity.Mathematics;
 namespace ParkManager.Geometry
 {
     /// <summary>
-    /// Builds a symmetric plaza furnishing plan for a walkable polygon.
+    /// Builds plaza furnishing plans for a walkable polygon. Boundary layouts
+    /// follow its edges and mirror groups only when the outline has an axis.
     /// All positions use the local XZ planning plane.
     /// </summary>
     internal static class PlazaPlanner
@@ -130,35 +131,61 @@ namespace ParkManager.Geometry
                 }
                 arrangementWidth += math.max(0, arrangement.Count - 1) * 0.55f;
             }
-            var candidates = arrangementPlacement
-                    == PlazaArrangementPlacementMode.AlongBoundary
-                ? BuildBoundaryFurnitureCandidates(center, majorAxis,
-                    majorSpan, minorSpan, arrangementSpacing,
+            var alongBoundary = arrangementPlacement
+                == PlazaArrangementPlacementMode.AlongBoundary;
+            var candidates = alongBoundary
+                ? BuildBoundaryFurnitureCandidates(polygon, arrangementSpacing,
                     arrangementWidth, maximumRadius)
-                : BuildFurnitureCandidates(center, protectedRadius,
-                    arrangementSpacing, arrangementWidth, maximumRadius,
-                    majorSpan, minorSpan);
-            var desiredPairs = math.clamp((int)math.round(4f * density / 100f),
-                1, 8);
+                : new List<FurniturePairCandidate>();
+            var mirrorNormal = float2.zero;
+            var mirrorOffset = 0f;
+            var mirroredBoundary = alongBoundary
+                && TryFindBoundaryMirrorAxis(polygon,
+                    out mirrorNormal, out mirrorOffset);
+            var desiredPairs = alongBoundary
+                ? math.clamp((int)math.round(4f * density / 100f), 1, 8)
+                : DesiredCircularPairs(density);
             if (arrangement != null && arrangement.Count > 0)
                 desiredPairs = math.min(desiredPairs,
                     math.max(1, MaximumFurniture / (arrangement.Count * 2)));
             if (arrangement != null && arrangement.Count > 0)
-                for (var i = 0; i < candidates.Count
-                    && furniture.Count / (arrangement.Count * 2) < desiredPairs; i++)
+            {
+                if (!alongBoundary)
                 {
-                    if (furniture.Count + arrangement.Count * 2 > MaximumFurniture)
-                        break;
-                    TryAddArrangement(furniture, candidates[i], arrangement,
-                        center, centerpieces, polygon, entrances, routes,
-                        arrangementPlacement, arrangementSpacing, i + 1);
+                    BuildCircularArrangements(furniture, center,
+                        protectedRadius, arrangementSpacing,
+                        arrangementWidth, maximumRadius, majorSpan, minorSpan,
+                        desiredPairs, arrangement, centerpieces, polygon,
+                        entrances, routes);
+                    return new PlazaPlan(seed, centerPlacement,
+                        arrangementPlacement, centerpieceSpacing,
+                        arrangementSpacing, centerpieces, furniture, routes);
                 }
+                var groupSize = arrangement.Count
+                    * (mirroredBoundary ? 2 : 1);
+                var desiredGroups = !mirroredBoundary
+                    ? desiredPairs * 2 : desiredPairs;
+                desiredGroups = math.min(desiredGroups,
+                    MaximumFurniture / groupSize);
+                var acceptedGroups = 0;
+                for (var i = 0; i < candidates.Count
+                    && acceptedGroups < desiredGroups; i++)
+                {
+                    if (furniture.Count + groupSize > MaximumFurniture)
+                        break;
+                    var added = TryAddBoundaryArrangement(furniture,
+                        candidates[i], arrangement, centerpieces, polygon,
+                        entrances, routes, arrangementSpacing, i + 1,
+                        mirroredBoundary, mirrorNormal, mirrorOffset);
+                    if (added) acceptedGroups++;
+                }
+            }
             return new PlazaPlan(seed, centerPlacement, arrangementPlacement,
                 centerpieceSpacing, arrangementSpacing, centerpieces, furniture,
                 routes);
         }
 
-        private static void TryAddArrangement(
+        private static bool TryAddArrangement(
             List<PlazaFurniturePlacement> furniture,
             FurniturePairCandidate anchor,
             IReadOnlyList<PlazaArrangementItem> arrangement,
@@ -195,7 +222,7 @@ namespace ParkManager.Geometry
                     || !FurniturePointValid(second, item.FootprintRadius,
                         centerpieces, polygon,
                         entrances, proposed, routes, item.Kind,
-                        arrangementId, placementMode, spacing)) return;
+                        arrangementId, placementMode, spacing)) return false;
                 proposed.Add(new PlazaFurniturePlacement
                 {
                     Kind = item.Kind, AssetName = item.AssetName,
@@ -216,59 +243,296 @@ namespace ParkManager.Geometry
             }
             furniture.AddRange(proposed.GetRange(furniture.Count,
                 proposed.Count - furniture.Count));
+            return true;
         }
 
-        private static List<FurniturePairCandidate> BuildFurnitureCandidates(
-            float2 center, float protectedRadius, float spacing,
-            float arrangementWidth, float maximumRadius,
-            float majorSpan, float minorSpan)
+        private static bool TryAddBoundaryArrangement(
+            List<PlazaFurniturePlacement> furniture,
+            FurniturePairCandidate anchor,
+            IReadOnlyList<PlazaArrangementItem> arrangement,
+            IReadOnlyList<PlazaCenterpiecePlacement> centerpieces,
+            IReadOnlyList<float2> polygon, IReadOnlyList<float2> entrances,
+            IReadOnlyList<PlazaRoutingSegment> routes, float spacing,
+            int arrangementId, bool mirrored, float2 mirrorNormal,
+            float mirrorOffset)
         {
-            var candidates = new List<FurniturePairCandidate>();
+            var width = 0f;
+            for (var i = 0; i < arrangement.Count; i++)
+                width += arrangement[i].FootprintRadius * 2f;
+            width += (arrangement.Count - 1) * 0.55f;
+            var offset = -width * 0.5f;
+            var proposed = new List<PlazaFurniturePlacement>(furniture);
+            var forward = new float2(math.sin(anchor.Rotation),
+                math.cos(anchor.Rotation));
+            var reflectedForward = mirrored
+                ? ReflectDirection(forward, mirrorNormal) : float2.zero;
+            for (var i = 0; i < arrangement.Count; i++)
+            {
+                var item = arrangement[i];
+                offset += item.FootprintRadius;
+                var first = anchor.Position + anchor.Tangent * offset;
+                if (!FurniturePointValid(first, item.FootprintRadius,
+                        centerpieces, polygon, entrances, proposed, routes,
+                        item.Kind, arrangementId,
+                        PlazaArrangementPlacementMode.AlongBoundary, spacing))
+                    return false;
+                proposed.Add(new PlazaFurniturePlacement
+                {
+                    Kind = item.Kind, AssetName = item.AssetName,
+                    ArrangementId = arrangementId,
+                    FootprintRadius = item.FootprintRadius,
+                    Position = first,
+                    Rotation = item.Kind == PlazaFurnitureKind.Bush ? 0f
+                        : NormalizeAngle(anchor.Rotation),
+                    Size = item.Size,
+                });
+                if (mirrored)
+                {
+                    var second = ReflectPoint(first, mirrorNormal, mirrorOffset);
+                    if (!FurniturePointValid(second, item.FootprintRadius,
+                            centerpieces, polygon, entrances, proposed, routes,
+                            item.Kind, arrangementId,
+                            PlazaArrangementPlacementMode.AlongBoundary, spacing))
+                        return false;
+                    proposed.Add(new PlazaFurniturePlacement
+                    {
+                        Kind = item.Kind, AssetName = item.AssetName,
+                        ArrangementId = arrangementId,
+                        FootprintRadius = item.FootprintRadius,
+                        Position = second,
+                        Rotation = item.Kind == PlazaFurnitureKind.Bush ? 0f
+                            : NormalizeAngle(math.atan2(reflectedForward.x,
+                                reflectedForward.y)),
+                        Size = item.Size,
+                    });
+                }
+                offset += item.FootprintRadius + 0.55f;
+            }
+            furniture.AddRange(proposed.GetRange(furniture.Count,
+                proposed.Count - furniture.Count));
+            return true;
+        }
+
+        private static int DesiredCircularPairs(int density)
+        {
+            // The UI's 25–200% steps correspond to 180°, 90°, 60°, 45°, 30°,
+            // 22.5°, 18° and 15° between complete arrangements.
+            switch (math.clamp((density + 12) / 25, 1, 8))
+            {
+                case 1: return 1;
+                case 2: return 2;
+                case 3: return 3;
+                case 4: return 4;
+                case 5: return 6;
+                case 6: return 8;
+                case 7: return 10;
+                default: return 12;
+            }
+        }
+
+        private static void BuildCircularArrangements(
+            List<PlazaFurniturePlacement> furniture, float2 center,
+            float protectedRadius, float spacing, float arrangementWidth,
+            float maximumRadius, float majorSpan, float minorSpan,
+            int desiredPairs, IReadOnlyList<PlazaArrangementItem> arrangement,
+            IReadOnlyList<PlazaCenterpiecePlacement> centerpieces,
+            IReadOnlyList<float2> polygon, IReadOnlyList<float2> entrances,
+            IReadOnlyList<PlazaRoutingSegment> routes)
+        {
             var innerRadius = protectedRadius + spacing + maximumRadius + 0.5f;
             var availableRadius = math.min(majorSpan, minorSpan) * 0.5f
                 - arrangementWidth * 0.5f - maximumRadius;
             var ringStep = math.max(8f, arrangementWidth + 4f);
-            for (var ring = 0; ring < 3; ring++)
+            // Try a complete, evenly distributed ring. When capacity or
+            // geometry rules one out, recompute every angle for fewer pairs
+            // instead of keeping a prefix of a denser ring.
+            for (var pairs = desiredPairs; pairs >= 1; pairs--)
             {
-                var distance = innerRadius + ring * ringStep;
-                if (distance > availableRadius + arrangementWidth * 0.5f)
-                    break;
-                for (var pair = 0; pair < 8; pair++)
+                var angleStep = math.PI / pairs;
+                for (var ring = 0; ring < 3; ring++)
                 {
-                    var angle = pair * math.PI / 8f;
-                    var direction = new float2(math.cos(angle), math.sin(angle));
-                    AddPairAt(candidates, center + direction * distance,
-                        -direction);
+                    var distance = innerRadius + ring * ringStep;
+                    if (distance > availableRadius + arrangementWidth * 0.5f)
+                        break;
+                    for (var phase = 0; phase < 8; phase++)
+                    {
+                        var trial = new List<PlazaFurniturePlacement>();
+                        for (var pair = 0; pair < pairs; pair++)
+                        {
+                            var angle = (pair + phase / 8f) * angleStep;
+                            var direction = new float2(math.cos(angle),
+                                math.sin(angle));
+                            var candidate = new FurniturePairCandidate
+                            {
+                                Position = center + direction * distance,
+                                Rotation = math.atan2(-direction.x,
+                                    -direction.y),
+                            };
+                            if (!TryAddArrangement(trial, candidate, arrangement,
+                                    center, centerpieces, polygon, entrances,
+                                    routes,
+                                    PlazaArrangementPlacementMode.AroundCenter,
+                                    spacing, pair + 1)) break;
+                        }
+                        if (trial.Count != pairs * arrangement.Count * 2)
+                            continue;
+                        furniture.AddRange(trial);
+                        return;
+                    }
                 }
             }
-            return candidates;
         }
 
         private static List<FurniturePairCandidate> BuildBoundaryFurnitureCandidates(
-            float2 center, float2 majorAxis, float majorSpan,
-            float minorSpan, float spacing, float arrangementWidth,
-            float maximumRadius)
+            IReadOnlyList<float2> polygon, float spacing,
+            float arrangementWidth, float maximumRadius)
         {
             var candidates = new List<FurniturePairCandidate>();
-            var minorAxis = new float2(-majorAxis.y, majorAxis.x);
-            var benchOffset = minorSpan * 0.5f - spacing - maximumRadius;
-            var halfLength = majorSpan * 0.5f - spacing - maximumRadius
-                - arrangementWidth * 0.5f;
-            if (benchOffset < 0f || halfLength < 0f) return candidates;
-            var pairSpacing = math.max(10f,
-                arrangementWidth + spacing * 2f + maximumRadius * 2f);
-            var pairsPerSide = math.clamp((int)(majorSpan / pairSpacing), 1, 8);
-            for (var i = 0; i < pairsPerSide; i++)
+            var signedArea = 0f;
+            for (var i = 0; i < polygon.Count; i++)
             {
-                var along = pairsPerSide == 1 ? 0f
-                    : -halfLength + i * (halfLength * 2f)
-                        / (pairsPerSide - 1);
-                var anchor = center + majorAxis * along + minorAxis * benchOffset;
-                var facing = -minorAxis;
-                AddPairAt(candidates, anchor, facing);
+                var a = polygon[i];
+                var b = polygon[(i + 1) % polygon.Count];
+                signedArea += a.x * b.y - b.x * a.y;
             }
+            if (math.abs(signedArea) < 0.01f) return candidates;
+            var edgeCandidates = new List<FurniturePairCandidate>[polygon.Count];
+            var maximumPerEdge = 0;
+            var endMargin = arrangementWidth * 0.5f + maximumRadius + 0.5f;
+            var groupSpacing = math.max(10f,
+                arrangementWidth + maximumRadius * 2f + 1.25f);
+            for (var edgeIndex = 0; edgeIndex < polygon.Count; edgeIndex++)
+            {
+                var a = polygon[edgeIndex];
+                var edge = polygon[(edgeIndex + 1) % polygon.Count] - a;
+                var length = math.length(edge);
+                if (length < endMargin * 2f) continue;
+                var tangent = edge / length;
+                var inward = signedArea > 0f
+                    ? new float2(-tangent.y, tangent.x)
+                    : new float2(tangent.y, -tangent.x);
+                var count = math.clamp((int)math.floor(
+                    (length - endMargin * 2f) / groupSpacing) + 1, 1, 8);
+                var start = (length - (count - 1) * groupSpacing) * 0.5f;
+                var edgeList = new List<FurniturePairCandidate>(count);
+                for (var i = 0; i < count; i++)
+                    edgeList.Add(new FurniturePairCandidate
+                    {
+                        Position = a + tangent * (start + i * groupSpacing)
+                            + inward * (spacing + maximumRadius),
+                        Rotation = math.atan2(inward.x, inward.y),
+                        Tangent = tangent,
+                    });
+                edgeCandidates[edgeIndex] = edgeList;
+                maximumPerEdge = math.max(maximumPerEdge, count);
+            }
+            // Visit every side before taking a second position on a long side.
+            for (var slot = 0; slot < maximumPerEdge; slot++)
+                for (var edge = 0; edge < edgeCandidates.Length; edge++)
+                    if (edgeCandidates[edge] != null
+                        && slot < edgeCandidates[edge].Count)
+                        candidates.Add(edgeCandidates[edge][slot]);
             return candidates;
         }
+
+        private static bool TryFindBoundaryMirrorAxis(
+            IReadOnlyList<float2> polygon,
+            out float2 normal, out float offset)
+        {
+            // The planner's chosen centerpiece can be off-axis in concave
+            // plazas. Symmetry must be measured around the polygon itself.
+            var mean = float2.zero;
+            for (var i = 0; i < polygon.Count; i++) mean += polygon[i];
+            mean /= polygon.Count;
+            var xx = 0f;
+            var xy = 0f;
+            var yy = 0f;
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var delta = polygon[i] - mean;
+                xx += delta.x * delta.x;
+                xy += delta.x * delta.y;
+                yy += delta.y * delta.y;
+            }
+            var angle = 0.5f * math.atan2(2f * xy, xx - yy);
+            var majorAxis = new float2(math.cos(angle), math.sin(angle));
+            var perpendicular = new float2(-majorAxis.y, majorAxis.x);
+            if (PolygonMirrorsAcross(polygon, perpendicular, out offset))
+            {
+                normal = perpendicular;
+                return true;
+            }
+            if (PolygonMirrorsAcross(polygon, majorAxis, out offset))
+            {
+                normal = majorAxis;
+                return true;
+            }
+            // A regular polygon can have equal principal moments even when
+            // its mirror axes are rotated. Every polygon mirror axis passes
+            // through a vertex or an edge midpoint and the vertex mean.
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var vertexDirection = polygon[i] - mean;
+                if (math.lengthsq(vertexDirection) > 0.0001f)
+                {
+                    normal = math.normalizesafe(new float2(
+                        -vertexDirection.y, vertexDirection.x));
+                    if (PolygonMirrorsAcross(polygon, normal, out offset))
+                        return true;
+                }
+                var midpoint = (polygon[i]
+                    + polygon[(i + 1) % polygon.Count]) * 0.5f;
+                var midpointDirection = midpoint - mean;
+                if (math.lengthsq(midpointDirection) <= 0.0001f) continue;
+                normal = math.normalizesafe(new float2(
+                    -midpointDirection.y, midpointDirection.x));
+                if (PolygonMirrorsAcross(polygon, normal, out offset))
+                    return true;
+            }
+            normal = float2.zero;
+            offset = 0f;
+            return false;
+        }
+
+        private static bool PolygonMirrorsAcross(IReadOnlyList<float2> polygon,
+            float2 normal, out float offset)
+        {
+            var minimum = float.MaxValue;
+            var maximum = float.MinValue;
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var projection = math.dot(polygon[i], normal);
+                minimum = math.min(minimum, projection);
+                maximum = math.max(maximum, projection);
+            }
+            offset = (minimum + maximum) * 0.5f;
+            const float toleranceSquared = 0.01f;
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var a = ReflectPoint(polygon[i], normal, offset);
+                var b = ReflectPoint(polygon[(i + 1) % polygon.Count],
+                    normal, offset);
+                var matchingEdge = false;
+                for (var j = 0; j < polygon.Count; j++)
+                {
+                    if (math.distancesq(a, polygon[(j + 1) % polygon.Count])
+                            > toleranceSquared
+                        || math.distancesq(b, polygon[j]) > toleranceSquared)
+                        continue;
+                    matchingEdge = true;
+                    break;
+                }
+                if (!matchingEdge) return false;
+            }
+            return true;
+        }
+
+        private static float2 ReflectPoint(float2 point, float2 normal,
+            float offset)
+            => point - normal * (2f * (math.dot(point, normal) - offset));
+
+        private static float2 ReflectDirection(float2 direction, float2 normal)
+            => direction - normal * (2f * math.dot(direction, normal));
 
         private static float2 FindMajorAxis(IReadOnlyList<float2> polygon,
             float2 center, out float majorSpan, out float minorSpan)
@@ -310,16 +574,6 @@ namespace ParkManager.Geometry
                 return normal;
             }
             return axis;
-        }
-
-        private static void AddPairAt(List<FurniturePairCandidate> candidates,
-            float2 point, float2 facing)
-        {
-            candidates.Add(new FurniturePairCandidate
-            {
-                Position = point,
-                Rotation = math.atan2(facing.x, facing.y),
-            });
         }
 
         private static bool FurniturePointValid(float2 point, float footprintRadius,
@@ -767,6 +1021,7 @@ namespace ParkManager.Geometry
         {
             internal float2 Position;
             internal float Rotation;
+            internal float2 Tangent;
         }
     }
 }

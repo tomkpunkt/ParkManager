@@ -396,6 +396,57 @@ if (emptyLayout.CenterAsset != "" || emptyLayout.SurfaceAsset != ""
         || item.AssetName != ""))
     failures.Add("Variant roll without catalog choices is not a safe default");
 
+var parkPolygon = new List<float2> {
+    new(0f, 0f), new(220f, 0f), new(220f, 160f), new(0f, 160f) };
+var parkGates = new List<float2> { new(110f, 0f), new(0f, 80f) };
+var treeAges = new int[4];
+for (var parkSeed = 1; parkSeed <= 20; parkSeed++)
+{
+    var parkPaths = ParkPathPlanner.Generate(parkPolygon, parkGates,
+        new float2(110f, 80f), parkSeed);
+    var planting = ParkDecorationPlanner.Generate(parkPolygon, parkPaths,
+        parkGates, parkSeed, 4f, false, 100, 100, 0b111111);
+    var replanting = ParkDecorationPlanner.Generate(parkPolygon, parkPaths,
+        parkGates, parkSeed, 4f, false, 100, 100, 0b111111);
+    if (!planting.Placements.Select(p => (p.Kind, p.Position, p.Variant, p.AgeStage))
+        .SequenceEqual(replanting.Placements.Select(p =>
+            (p.Kind, p.Position, p.Variant, p.AgeStage))))
+        failures.Add($"Park seed {parkSeed}: non-deterministic planting");
+    var trees = planting.Placements
+        .Where(p => p.Kind == ParkDecorationKind.Tree).ToArray();
+    var bushes = planting.Placements
+        .Where(p => p.Kind == ParkDecorationKind.Bush).ToArray();
+    if (trees.Length < 20 || bushes.Length < 20)
+    {
+        failures.Add($"Park seed {parkSeed}: too little vegetation");
+        continue;
+    }
+    foreach (var tree in trees) treeAges[tree.AgeStage]++;
+    var sameSpeciesNeighbour = trees.Count(tree => trees
+        .Where(other => !other.Position.Equals(tree.Position))
+        .OrderBy(other => math.distancesq(other.Position, tree.Position))
+        .First().Variant == tree.Variant) / (float)trees.Length;
+    // Independent selectors almost never repeat, so random species would
+    // score close to zero here.
+    if (sameSpeciesNeighbour < 0.4f)
+        failures.Add($"Park seed {parkSeed}: trees are not grouped by species");
+    var beltTrees = trees.Count(tree => ParkEdgeDistance(tree.Position) <= 11.5f)
+        / (float)trees.Length;
+    if (beltTrees < 0.2f)
+        failures.Add($"Park seed {parkSeed}: no boundary belt");
+    var fringeBushes = bushes.Count(bush => ParkEdgeDistance(bush.Position) <= 11.5f
+        || trees.Any(tree => math.distance(tree.Position, bush.Position) <= 12f))
+        / (float)bushes.Length;
+    if (fringeBushes < 0.65f)
+        failures.Add($"Park seed {parkSeed}: bushes are not layered with trees");
+}
+var totalTrees = treeAges.Sum();
+if (treeAges[0] != 0 || treeAges[3] < totalTrees * 0.6f
+    || treeAges[1] == 0 || treeAges[2] == 0)
+    failures.Add($"Tree ages are not a mostly mature mix: {string.Join("/", treeAges)}");
+float ParkEdgeDistance(float2 p) => math.min(math.min(p.x, 220f - p.x),
+    math.min(p.y, 160f - p.y));
+
 var report = new { count, failed = failures.Count, failures, cases };
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 File.WriteAllText(output, JsonSerializer.Serialize(report,

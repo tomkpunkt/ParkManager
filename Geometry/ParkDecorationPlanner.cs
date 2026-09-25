@@ -5,8 +5,9 @@ using Unity.Mathematics;
 namespace ParkManager.Geometry
 {
     /// <summary>
-    /// Deterministic, bounded first furnishing pass. Vegetation is sampled in
-    /// the polygon with separate random streams; furniture follows paths and
+    /// Deterministic, bounded first furnishing pass. Vegetation forms
+    /// single-species groves with a bush fringe, a boundary belt and sparse
+    /// solitaires, using separate random streams; furniture follows paths and
     /// the optional fence follows the boundary while leaving gate gaps.
     /// </summary>
     internal static class ParkDecorationPlanner
@@ -16,6 +17,10 @@ namespace ParkManager.Geometry
         private const int MaximumFurniture = 160;
         private const int MaximumFencePieces = 500;
         private const float FenceInset = 0.20f;
+        private const float AccentSpeciesChance = 0.1f;
+        private const float YoungTreeChance = 0.08f;
+        private const float AdultTreeChance = 0.2f;
+        private const float SolitaireShare = 0.12f;
 
         internal static ParkDecorationPlan Generate(IReadOnlyList<float2> polygon,
             ParkPathPlan paths, IReadOnlyList<float2> entrances, int seed,
@@ -82,27 +87,67 @@ namespace ParkManager.Geometry
         {
             var random = new Unity.Mathematics.Random(seed == 0 ? 1u : seed);
             var accepted = new List<float2>();
-            var spacing = kind == ParkDecorationKind.Tree ? 10f : 5f;
-            var boundaryClearance = kind == ParkDecorationKind.Tree ? 4f : 2.2f;
-            var clusterRadius = math.clamp((float)Math.Sqrt(area) * 0.16f,
-                12f, 28f) * (kind == ParkDecorationKind.Tree ? 1f : 0.78f);
+            var isTree = kind == ParkDecorationKind.Tree;
+            var boundaryClearance = isTree ? 4f : 2.2f;
+            // Bushes use the tree grove radius so they can form its fringe.
+            var groveRadius = math.clamp((float)Math.Sqrt(area) * 0.16f,
+                12f, 28f);
+            var groveShare = clusters != null && clusters.Count > 0
+                ? (isTree ? 0.55f : 0.5f) : 0f;
+            var beltShare = isTree ? 0.3f : 0.4f;
+            var beltDepth = isTree ? 7f : 9f;
+            var perimeter = Perimeter(polygon);
+            var orientation = SignedArea(polygon) >= 0d ? 1f : -1f;
+            // Each grove and the boundary belt are dominated by one species;
+            // the selector is resolved modulo the chosen assets in the ECS layer.
+            var groveVariants = new uint[clusters?.Count ?? 0];
+            for (var i = 0; i < groveVariants.Length; i++)
+                groveVariants[i] = unchecked((uint)random.NextInt());
+            var beltVariant = unchecked((uint)random.NextInt());
+            var maximumSolitaires = Math.Max(1,
+                (int)Math.Round(target * SolitaireShare));
+            var solitaires = 0;
             var attempts = Math.Max(80, target * 90);
             for (var attempt = 0; attempt < attempts && accepted.Count < target; attempt++)
             {
                 float2 point;
-                // Both vegetation layers share their cluster centres. Their
-                // independent streams still keep the result organic and the
-                // uniform remainder avoids isolated artificial "islands".
-                if (clusters != null && clusters.Count > 0
-                    && random.NextFloat() < 0.62f)
+                uint variant;
+                float spacing;
+                var solitaire = false;
+                var source = random.NextFloat();
+                var accent = random.NextFloat() < AccentSpeciesChance;
+                var randomVariant = unchecked((uint)random.NextInt());
+                if (source < groveShare)
                 {
-                    var centre = clusters[random.NextInt(0, clusters.Count)];
+                    // Trees fill the grove; bushes form its understory fringe.
+                    var grove = random.NextInt(0, clusters.Count);
                     var angle = random.NextFloat(0f, math.PI * 2f);
-                    var radius = math.sqrt(random.NextFloat()) * clusterRadius;
-                    point = centre + new float2(math.cos(angle), math.sin(angle))
-                        * radius;
+                    var radius = isTree
+                        ? math.sqrt(random.NextFloat()) * groveRadius
+                        : groveRadius * random.NextFloat(0.85f, 1.3f);
+                    point = clusters[grove]
+                        + new float2(math.cos(angle), math.sin(angle)) * radius;
+                    variant = accent ? randomVariant : groveVariants[grove];
+                    spacing = isTree ? 7.5f : 4f;
                 }
-                else point = random.NextFloat2(min, max);
+                else if (source < groveShare + beltShare && perimeter > 0f)
+                {
+                    point = BoundaryBeltPoint(polygon, orientation,
+                        random.NextFloat(0f, perimeter),
+                        boundaryClearance + random.NextFloat(0f, beltDepth));
+                    variant = accent ? randomVariant : beltVariant;
+                    spacing = isTree ? 7.5f : 4f;
+                }
+                else
+                {
+                    // Scattered solitaires are capped and keep a wide berth
+                    // so open lawns remain between the groves and the belt.
+                    point = random.NextFloat2(min, max);
+                    variant = randomVariant;
+                    spacing = isTree ? 14f : 6f;
+                    solitaire = true;
+                    if (solitaires >= maximumSolitaires) continue;
+                }
                 var size = kind == ParkDecorationKind.Tree
                     ? random.NextFloat(5f, 8.5f)
                     : random.NextFloat(2.3f, 4.2f);
@@ -142,17 +187,49 @@ namespace ParkManager.Geometry
                 }
                 if (!valid) continue;
                 accepted.Add(point);
+                if (solitaire) solitaires++;
                 result.Add(new ParkDecorationPlacement
                 {
                     Kind = kind,
                     Position = point,
                     Rotation = random.NextFloat(0f, math.PI * 2f),
                     Size = size,
-                    Variant = unchecked((uint)random.NextInt()),
+                    Variant = variant,
                     AgeStage = kind == ParkDecorationKind.Tree
                         ? SelectTreeAge(ref random) : (byte)0,
                 });
             }
+        }
+
+        private static float2 BoundaryBeltPoint(IReadOnlyList<float2> polygon,
+            float orientation, float distanceAlong, float inset)
+        {
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var a = polygon[i];
+                var edge = polygon[(i + 1) % polygon.Count] - a;
+                var length = math.length(edge);
+                if (distanceAlong > length && i + 1 < polygon.Count)
+                {
+                    distanceAlong -= length;
+                    continue;
+                }
+                if (length < 1e-4f) return a;
+                var tangent = edge / length;
+                var inward = new float2(-tangent.y, tangent.x) * orientation;
+                return a + tangent * math.min(distanceAlong, length)
+                    + inward * inset;
+            }
+            return polygon[0];
+        }
+
+        private static float Perimeter(IReadOnlyList<float2> polygon)
+        {
+            var total = 0f;
+            for (var i = 0; i < polygon.Count; i++)
+                total += math.distance(polygon[i],
+                    polygon[(i + 1) % polygon.Count]);
+            return total;
         }
 
         private static List<float2> BuildVegetationClusters(
@@ -181,10 +258,11 @@ namespace ParkManager.Geometry
 
         private static byte SelectTreeAge(ref Unity.Mathematics.Random random)
         {
-            // Keep consuming the dedicated vegetation stream so changing the
-            // age policy does not accidentally reshuffle later placements.
-            random.NextInt();
-            return 3; // bestehender Park: ausschließlich alte Bäume
+            // An established park: mostly mature trees with some replanting.
+            var roll = random.NextFloat();
+            if (roll < YoungTreeChance) return 1;
+            if (roll < YoungTreeChance + AdultTreeChance) return 2;
+            return 3;
         }
 
         private static void SampleFurniture(List<ParkDecorationPlacement> result,

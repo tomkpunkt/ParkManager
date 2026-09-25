@@ -10,6 +10,11 @@
 
 ### Detailed changes
 
+- Park planting is more realistic: trees form groves dominated by one
+  species with a few accents, bushes line the grove edges and a denser belt
+  follows the park boundary, and a capped number of solitaires leaves open
+  lawns. Trees are mostly mature with some adult and young ones. Existing
+  seeds produce different planting.
 - Plaza furniture placed around the center follows a stadium (capsule) ring
   around the outer centerpieces when two mirrored or three main-axis
   centerpieces are used, instead of a circle around the plaza center.

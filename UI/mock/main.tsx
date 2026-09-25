@@ -16,7 +16,9 @@ type LivePlan = { seed: number; error?: string;
   paths: { ax: number; ay: number; bx: number; by: number; hidden: boolean }[];
   fences: { ax: number; ay: number; bx: number; by: number }[];
   centers: { x: number; y: number; radius: number }[];
-  furniture: { x: number; y: number; radius: number; kind: string; asset: string }[] };
+  furniture: { x: number; y: number; radius: number; kind: string; asset: string;
+    species?: number; age?: number }[] };
+const speciesColors = ['#68cb74', '#2f8f4e', '#a3d65c', '#4fb3a0'];
 
 const icon = (letter: string, color: string) => `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="8" fill="${color}"/><text x="32" y="43" text-anchor="middle" fill="white" font-size="33" font-family="Arial">${letter}</text></svg>`)}`;
@@ -176,8 +178,10 @@ function App() {
             <circle key={`furniture-${i}`} data-testid="live-furniture"
               cx={item.x * 8} cy={item.y * 8}
               r={Math.max(2, item.radius * 8)} fill={item.kind === 'Bench' ? '#bd8758'
-                : item.kind === 'Tree' || item.kind === 'Bush' ? '#68cb74' : '#efd56c'}>
-              <title>{item.kind} {item.asset}</title></circle>) : null}
+                : item.kind === 'Tree' || item.kind === 'Bush'
+                  ? speciesColors[item.species ?? 0] : '#efd56c'}>
+              <title>{item.kind} {item.asset}{item.kind === 'Tree'
+                ? ` Art ${(item.species ?? 0) + 1} Alter ${item.age}` : ''}</title></circle>) : null}
           {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? '9' : '5'}
             fill={i === 0 ? '#80e69a' : '#f4cb62'} />)}
           {entrances.map((p, i) => <circle key={`gate-${i}`} cx={p.x} cy={p.y}

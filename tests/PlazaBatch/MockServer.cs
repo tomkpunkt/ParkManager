@@ -178,7 +178,9 @@ internal static class MockServer
                 x = x.Position.x, y = x.Position.y,
                 radius = x.Kind == ParkDecorationKind.Tree ? 1.7f
                     : x.Kind == ParkDecorationKind.Bush ? 0.7f : 0.5f,
-                kind = x.Kind.ToString(), asset = x.ExplicitAssetName ?? "" }).ToArray(),
+                kind = x.Kind.ToString(), asset = x.ExplicitAssetName ?? "",
+                // Simulates four selected species, as resolved in the ECS layer.
+                species = (int)(x.Variant % 4u), age = (int)x.AgeStage }).ToArray(),
         };
     }
 }

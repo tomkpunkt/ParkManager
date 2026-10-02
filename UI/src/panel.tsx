@@ -11,7 +11,8 @@ import {
   plazaArrangementPlacement$, plazaArrangementSpacing$,
   plazaCenterOptionsJson$, plazaCenterSelected$, plazaCenterPlacement$,
   plazaCenterpieceSpacing$, plazaFenceEnabled$,
-  polygonArea$, polygonClosed$, polygonValid$, removeBuiltPaths, setPlannerMode,
+  polygonArea$, polygonClosed$, polygonValid$, removeBuiltPaths, removeMode$,
+  removeSelectedPark, removeSelectionCount$, setPlannerMode, setRemoveMode,
   setSiteType, siteType$, toggleTool, vegetationDensity$,
 } from "./bindings";
 import { assetCategories, NO_PLAZA_CENTER, parseAssetChoices,
@@ -72,6 +73,8 @@ export const ParkManagerPanel = () => {
   const decorationBuildBusy = useValue(decorationBuildBusy$);
   const decorationBuildPresent = useValue(decorationBuildPresent$);
   const assetChoices = parseAssetChoices(useValue(assetOptionsJson$));
+  const removeMode = useValue(removeMode$);
+  const removeSelectionCount = useValue(removeSelectionCount$);
 
   useEffect(() => { if (!open) setWindowKey(null); }, [open]);
   useEffect(() => setWindowKey(null), [siteType]);
@@ -218,21 +221,45 @@ export const ParkManagerPanel = () => {
               {" · "}{isPlaza ? t.plazaAccesses(entranceCount)
                 : t.pathsGates(entranceCount)}</span>
           </div>
-          <Hint text={t.actionHints[action]}>
-            <button type="button" data-testid="main-action" data-action={action}
-              className={`${styles.mainAction} ${action === "build"
-                ? styles.mainActionBuild : ""}`}
-              disabled={actionDisabled} onClick={runAction}>
-              {actionText[action]}</button>
-          </Hint>
+          {/* Remove mode replaces the next-step button: pick, then confirm. */}
+          {removeMode
+            ? <Hint text={removeSelectionCount > 0
+                ? t.removeSelectedHint : t.removePickHint}>
+                <button type="button" data-testid="main-action"
+                  data-action={removeSelectionCount > 0 ? "removePark" : "pickPark"}
+                  className={`${styles.mainAction} ${removeSelectionCount > 0
+                    ? styles.mainActionDanger : ""}`}
+                  disabled={removeSelectionCount === 0} onClick={removeSelectedPark}>
+                  {removeSelectionCount > 0
+                    ? t.removeSelected(removeSelectionCount) : t.removePick}</button>
+              </Hint>
+            : <Hint text={t.actionHints[action]}>
+                <button type="button" data-testid="main-action" data-action={action}
+                  className={`${styles.mainAction} ${action === "build"
+                    ? styles.mainActionBuild : ""}`}
+                  disabled={actionDisabled} onClick={runAction}>
+                  {actionText[action]}</button>
+              </Hint>}
           <div className={styles.actionRow}>
-            {pathBuildPresent
-              ? <button type="button" className={styles.dangerButton} disabled={busy}
-                  data-testid="remove-built" onClick={removeBuiltPaths}>
-                  {isPlaza ? t.removePlaza : t.removePark}</button>
-              : <button type="button" className={styles.quietButton}
-                  disabled={busy || pointCount === 0} data-testid="reset-outline"
-                  onClick={clearPolygon}>{t.reset}</button>}
+            {removeMode
+              ? <button type="button" className={styles.quietButton}
+                  data-testid="remove-mode-cancel"
+                  onClick={() => setRemoveMode(false)}>{t.removeCancel}</button>
+              : pathBuildPresent
+                ? <button type="button" className={styles.dangerButton} disabled={busy}
+                    data-testid="remove-built" onClick={removeBuiltPaths}>
+                    {isPlaza ? t.removePlaza : t.removePark}</button>
+                // With an empty workspace there is nothing to reset; the slot
+                // offers removing an already finished park instead.
+                : pointCount === 0 && !busy
+                  ? <Hint text={t.removeBuiltParkHint}>
+                      <button type="button" className={styles.quietButton}
+                        data-testid="remove-mode"
+                        onClick={() => setRemoveMode(true)}>{t.removeBuiltPark}</button>
+                    </Hint>
+                  : <button type="button" className={styles.quietButton}
+                      disabled={busy || pointCount === 0} data-testid="reset-outline"
+                      onClick={clearPolygon}>{t.reset}</button>}
           </div>
         </section>
       </div>

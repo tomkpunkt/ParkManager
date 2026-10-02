@@ -104,6 +104,21 @@ namespace ParkManager.Tools
                     entrances[i], i == hoverEntrance ? 5.5f : 4.5f);
         }
 
+        /// <summary>
+        /// Marks every element of a built park in the remove mode: amber while
+        /// hovered, red once the park is selected for removal.
+        /// </summary>
+        internal static void DrawParkHighlight(OverlayRenderSystem.Buffer buffer,
+            IReadOnlyList<float3> lines, IReadOnlyList<float3> points,
+            bool selected)
+        {
+            var color = selected ? BuildIssue : Active;
+            for (var i = 0; i + 1 < lines.Count; i += 2)
+                Line(buffer, color, lines[i], lines[i + 1], 1.1f);
+            for (var i = 0; i < points.Count; i++)
+                Circle(buffer, color, points[i], 2.6f);
+        }
+
         private static void DrawDecorations(OverlayRenderSystem.Buffer buffer,
             ParkDecorationPlan plan, bool plaza, float height)
         {

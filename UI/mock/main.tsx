@@ -183,6 +183,10 @@ function App() {
         set('PathBuildSummary', 'Validation failed: selected area is blocked.');
       }}>Fehlerstatus testen</button>
       <button onClick={() => {
+        // Stands in for clicking an element of a built park on the map.
+        if (get('RemoveMode')) set('RemoveSelectionCount', 412);
+      }}>Gebauten Park anklicken</button>
+      <button onClick={() => {
         // Same wire format as Tools/UiText.cs, including a nested message.
         set('PathBuildStatus', 'warning');
         set('PathBuildSummary', JSON.stringify({ k: 'preflight.warning',

@@ -447,3 +447,21 @@ test('the UI draws symbols as icons, not font glyphs Cohtml lacks', async ({ pag
   expect(text).not.toMatch(/[↻▲▼←→✦]/);
   await expect(page.getByTestId('paths-variant').locator('svg')).toHaveCount(1);
 });
+
+test('a built park is picked on the map and removed as a whole', async ({ page }) => {
+  await page.goto('/');
+  // Empty workspace: the reset slot offers removing a finished park instead.
+  await expect(page.getByTestId('reset-outline')).toHaveCount(0);
+  await page.getByTestId('remove-mode').click();
+  await expect(mainAction(page)).toHaveAttribute('data-action', 'pickPark');
+  await expect(mainAction(page)).toBeDisabled();
+  await page.getByRole('button', { name: 'Gebauten Park anklicken' }).click();
+  await expect(mainAction(page)).toHaveAttribute('data-action', 'removePark');
+  await expect(mainAction(page)).toHaveText('Park entfernen (412 Elemente)');
+  await mainAction(page).click();
+  // The mode stays on so several parks can be removed in a row.
+  await expect(mainAction(page)).toHaveAttribute('data-action', 'pickPark');
+  await page.getByTestId('remove-mode-cancel').click();
+  await expect(page.getByTestId('remove-mode')).toBeVisible();
+  await expect(mainAction(page)).toHaveAttribute('data-action', 'drawOutline');
+});

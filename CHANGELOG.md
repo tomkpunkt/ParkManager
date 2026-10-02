@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Remove a built park or plaza as a whole (#1, #4): with an empty workspace the action column offers "Remove a built park". Click any element of the park on the map (path, tree, bench, ground), all of its elements are highlighted, and "Remove park" deletes them together. The park is found through the tag its elements already carry; no outline or plan is stored for this.
+- The ground surface is no longer a deletion anchor (#1): bulldozing or replacing a park's surface with another tool (Better Bulldozer, Area Bucket) now affects only the surface instead of deleting the whole park.
+- Keep less data for finished parks: the edit-tracking baseline is dropped when a park is finished, and the record of a park is removed automatically once all of its elements were deleted by hand.
 - Fix empty surface and asset lists (#5): the asset catalog now scans in the UI update phase instead of the game simulation phase, which does not run while the game is paused; it rescans after every loaded save, and a prefab that fails to classify is skipped instead of aborting the whole scan.
 - Fix parks staying on "Building" (#3): two materialization waits had no timeout, an exception inside a build step repeated every frame without ending the build, and build state survived loading another save. Build steps now cancel cleanly with an error message, and the workspace is reset when a game is loaded.
 

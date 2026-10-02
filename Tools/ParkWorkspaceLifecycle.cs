@@ -57,6 +57,11 @@ namespace ParkManager.Tools
 
             var finishedRecord = _lastBuildRecord;
             MarkCompleted(finishedRecord);
+            // The edit baseline only serves the open workspace. A finished
+            // park keeps nothing but its record and the member tags that let
+            // it be removed as a whole.
+            if (EntityManager.HasComponent<ParkEditableBuildState>(finishedRecord))
+                EntityManager.RemoveComponent<ParkEditableBuildState>(finishedRecord);
             _lastBuildRecord = Entity.Null;
             ResetWorkspaceDraft();
             PublishState(UiText.Of("status.parkFinished"));

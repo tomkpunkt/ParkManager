@@ -21,7 +21,7 @@ ParkManager is a Cities: Skylines II mod for designing and building custom parks
 
 ## Designed for in-game editing
 
-ParkManager previews planned placements on the map before construction. Built paths, surfaces, plants and furnishings use normal game entities, so they remain available to the game's editing tools. ParkManager also keeps track of each build so its contents can be removed together. Unfinished outlines and previews belong to the current game session; they are not restored when a save is loaded.
+ParkManager previews planned placements on the map before construction. Built paths, surfaces, plants and furnishings use normal game entities, so they remain available to the game's editing tools. ParkManager also tags the elements of each build so a park can be removed as a whole: with an empty workspace choose "Remove a built park", click any element of the park and confirm. Deleting or replacing a single element with another tool, including the ground surface, leaves the rest of the park in place. Unfinished outlines and previews belong to the current game session; they are not restored when a save is loaded.
 
 ## Development
 

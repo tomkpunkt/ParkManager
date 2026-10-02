@@ -61,6 +61,12 @@ export const selectPlazaCenter = (name: string) =>
 export const editPlazaArrangement = (command: string) =>
   trigger(MOD, "EditPlazaArrangement", command);
 export const removeBuiltPaths = () => trigger(MOD, "RemoveBuiltPaths");
+/** Remove mode: pick a built park on the map and delete it as a whole. */
+export const removeMode$ = bindValue<boolean>(MOD, "RemoveMode", false);
+/** Element count of the park picked in remove mode; 0 while none is picked. */
+export const removeSelectionCount$ = bindValue<number>(MOD, "RemoveSelectionCount", 0);
+export const setRemoveMode = (enabled: boolean) => trigger(MOD, "SetRemoveMode", enabled);
+export const removeSelectedPark = () => trigger(MOD, "RemoveSelectedPark");
 export const generateDecorations = () => trigger(MOD, "GenerateDecorations");
 export const setVegetationDensity = (density: number) =>
   trigger(MOD, "SetVegetationDensity", density);

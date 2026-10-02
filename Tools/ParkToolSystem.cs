@@ -121,6 +121,12 @@ namespace ParkManager.Tools
                 && _decorationBuildPhase != DecorationBuildPhase.ClearRequested)
                 AbortDecorationBuild(UiText.Of("decoration.toolLeft"));
             AbortLakeBuild();
+            if (_removeMode)
+            {
+                _removeMode = false;
+                ClearRemoveSelection();
+                PublishRemoveState();
+            }
             _ui?.SetToolActive(false);
             base.OnStopRunning();
         }
@@ -148,8 +154,20 @@ namespace ParkManager.Tools
 
             if (EscapePressed())
             {
+                // Escape first leaves the remove mode, then the tool.
+                if (_removeMode)
+                {
+                    SetRemoveMode(false);
+                    return Render(deps);
+                }
                 m_ToolSystem.activeTool = m_DefaultToolSystem;
                 return deps;
+            }
+
+            if (_removeMode)
+            {
+                UpdateRemoveMode(inputAllowed);
+                return Render(deps);
             }
 
             if (!_plannerMode && UndoPressed())
@@ -263,6 +281,9 @@ namespace ParkManager.Tools
             ResetBuildPhases();
             _lastBuildRecord = Unity.Entities.Entity.Null;
             applyMode = ApplyMode.None;
+            _removeMode = false;
+            ClearRemoveSelection();
+            PublishRemoveState();
             ResetWorkspaceDraft();
             PublishState(UiText.Of("status.drawHint"));
             PublishPathBuildState(UiText.Of("path.noParkThisSession"));
@@ -794,6 +815,10 @@ namespace ParkManager.Tools
                 _plannerMode, _entrances, _hoverEntrance, _pathPreview,
                 _decorationPlan, IsPlaza,
                 _buildIssues, LastSnap, HasSnapGuide, SnapGuide);
+            if (_removeMode)
+                ParkOverlay.DrawParkHighlight(buffer, _removeHighlightLines,
+                    _removeHighlightPoints,
+                    _removeSelectedPark != Unity.Entities.Entity.Null);
             return deps;
         }
 

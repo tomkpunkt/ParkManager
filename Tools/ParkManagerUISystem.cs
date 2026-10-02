@@ -55,6 +55,8 @@ namespace ParkManager.Tools
         private ValueBinding<bool> _decorationBuildBusy;
         private ValueBinding<bool> _decorationBuildPresent;
         private ValueBinding<string> _decorationSummary;
+        private ValueBinding<bool> _removeMode;
+        private ValueBinding<int> _removeSelectionCount;
         private ValueBinding<string> _locale;
         private string _lastLocale = "en";
 
@@ -141,6 +143,15 @@ namespace ParkManager.Tools
             AddBinding(_locale = new ValueBinding<string>(
                 Group, "Locale", _lastLocale));
 
+            AddBinding(_removeMode = new ValueBinding<bool>(
+                Group, "RemoveMode", false));
+            AddBinding(_removeSelectionCount = new ValueBinding<int>(
+                Group, "RemoveSelectionCount", 0));
+            AddBinding(new TriggerBinding<bool>(Group, "SetRemoveMode",
+                enabled => Tool.SetRemoveMode(enabled)));
+            AddBinding(new TriggerBinding(Group, "RemoveSelectedPark",
+                () => Tool.RemoveSelectedPark()));
+
             AddBinding(new TriggerBinding(Group, "ToggleTool", ToggleTool));
             AddBinding(new TriggerBinding(Group, "ClearPolygon",
                 () => Tool.ClearPolygon()));
@@ -219,6 +230,13 @@ namespace ParkManager.Tools
 
         internal void SetAssetOptions(string optionsJson)
             => _assetOptionsJson?.Update(optionsJson ?? "{}");
+
+        /// <summary>Remove mode and the element count of the selected park (0 = none).</summary>
+        internal void SetRemoveState(bool removeMode, int selectionCount)
+        {
+            _removeMode?.Update(removeMode);
+            _removeSelectionCount?.Update(selectionCount);
+        }
 
         internal void SetPlannerState(bool plannerMode, int entranceCount,
             bool pathPlanReady)

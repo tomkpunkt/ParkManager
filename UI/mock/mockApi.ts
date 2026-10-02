@@ -45,6 +45,7 @@ export const scenario = (kind: 'empty' | 'outline' | 'paths' | 'decorated' | 'pl
     'ParkManager.PathBuildSummary': '', 'ParkManager.PathBuildStatus': 'ok',
     'ParkManager.DecorationSummary': '',
     'ParkManager.PlazaCenterSelected': plaza ? 'Mock Fountain' : '',
+    'ParkManager.RemoveMode': false, 'ParkManager.RemoveSelectionCount': 0,
     'ParkManager.Locale': 'de',
   }); emit();
   if (kind === 'paths' || kind === 'decorated' || plaza) {
@@ -74,6 +75,9 @@ export const trigger = (scope: string, action: string, payload?: any) => {
     case 'SelectPlazaCenter': set('PlazaCenterSelected', payload); replanPlaza(); break;
     case 'GeneratePaths': set('PathBuildStatus', 'ok'); if (get('SiteType') === 1) { generatePlaza(); break; } seed++; set('PathPlanReady', true); set('DecorationPlanReady', true); set('PathBuildSummary', `Mock-Seed ${seed}`); recalculate(); break;
     case 'BuildPark': void buildEntirePark(); break;
+    // The mock has no map entities: entering the mode "picks" a sample park.
+    case 'SetRemoveMode': set('RemoveMode', payload); set('RemoveSelectionCount', 0); break;
+    case 'RemoveSelectedPark': set('RemoveSelectionCount', 0); break;
     case 'RemoveBuiltPaths': set('PathBuildPresent', false); set('DecorationBuildPresent', false); set('DecorationPlanReady', false); break;
     case 'GenerateDecorations': seed++; if (get('SiteType') === 1 && get('DecorationPlanReady')) { void rollPlazaVariant(true); break; } set('DecorationPlanReady', true); set('DecorationSummary', `Mock-Seed ${seed}`); recalculate(); break;
     case 'FinishPark': scenario('empty'); break;

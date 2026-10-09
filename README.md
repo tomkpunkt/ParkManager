@@ -36,6 +36,12 @@ ParkManager is under active development. See the [changelog](CHANGELOG.md) for r
 
 The mod has no third-party runtime assembly dependencies.
 
+### Adding a translation
+
+UI copy lives in `UI/src/locales/`, one file per language. `en.ts` defines the `Texts` type. Copy it to `locales/<id>.ts`, annotate the object as `Texts`, and register that id in the map in `UI/src/i18n.ts`. A missing or extra key fails the UI build.
+
+The game passes its locale id through unchanged. The UI uses an exact match (`pt-BR`), then the language prefix before `-` or `_` (`de-DE` uses `de`), then English. Keep `{0}` and `{n:d}` placeholders in `messages`.
+
 ### Test without the game
 
 The browser mock and geometry checks do not require Cities: Skylines II, its

@@ -7,6 +7,7 @@ notes/
 specs/
 UI/node_modules/
 UI/build/
+UI/.locale-test/
 UI/mock/dist/
 UI/playwright-report/
 UI/test-results/

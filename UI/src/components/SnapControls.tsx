@@ -11,7 +11,7 @@ const snapOptions = [
   { bit: 0x40, name: "ObjectSide" },
   { bit: 0x400, name: "GuideLines" },
   { bit: 0x800, name: "ZoneGrid" },
-];
+] as const;
 
 /** The game's own snapping switches, shown while the outline is edited. */
 export const SnapControls = ({ t }: { t: Texts }) => {

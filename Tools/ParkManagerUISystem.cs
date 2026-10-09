@@ -139,7 +139,7 @@ namespace ParkManager.Tools
                 Group, "DecorationBuildPresent", false));
             AddBinding(_decorationSummary = new ValueBinding<string>(
                 Group, "DecorationSummary", UiText.Of("decoration.none")));
-            _lastLocale = GetSupportedLocale();
+            _lastLocale = GetActiveLocale();
             AddBinding(_locale = new ValueBinding<string>(
                 Group, "Locale", _lastLocale));
 
@@ -297,7 +297,7 @@ namespace ParkManager.Tools
 
         protected override void OnUpdate()
         {
-            var locale = GetSupportedLocale();
+            var locale = GetActiveLocale();
             if (locale != _lastLocale)
             {
                 _lastLocale = locale;
@@ -306,18 +306,21 @@ namespace ParkManager.Tools
         }
 
         /// <summary>
-        /// Reduces the game's locale to the languages currently shipped by
-        /// ParkManager. Unknown languages deliberately fall back to English.
+        /// Publishes the game's active locale id unchanged, including region
+        /// and script (<c>de-DE</c>, <c>pt-BR</c>, <c>zh-HANS</c>). The React
+        /// UI selects the translation: exact id, then the language prefix,
+        /// then English. A missing locale still publishes <c>en</c>.
         /// The binding is watched by the React UI, so changing the game
         /// language does not require a second UI-specific setting.
         /// </summary>
-        private static string GetSupportedLocale()
+        private static string GetActiveLocale()
         {
             try
             {
                 var locale = GameManager.instance?.localizationManager
                     ?.activeLocaleId;
-                return locale != null && locale.StartsWith("de") ? "de" : "en";
+                if (string.IsNullOrWhiteSpace(locale)) return "en";
+                return locale.Trim();
             }
             catch
             {

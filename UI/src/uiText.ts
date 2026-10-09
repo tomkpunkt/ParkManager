@@ -24,8 +24,8 @@ export const parseUiText = (raw: string): UiMessage | string => {
   }
 };
 
-const formatArgument = (value: unknown, decimals: string | undefined,
-  messages: Record<string, string>, depth: number): string => {
+const formatArgument = <T extends Record<string, string>>(value: unknown,
+  decimals: string | undefined, messages: T, depth: number): string => {
   if (value === null || value === undefined) return "";
   if (isMessage(value)) return formatMessage(value, messages, depth + 1);
   if (typeof value === "number") {
@@ -37,8 +37,8 @@ const formatArgument = (value: unknown, decimals: string | undefined,
   return String(value);
 };
 
-const formatMessage = (message: UiMessage, messages: Record<string, string>,
-  depth: number): string => {
+const formatMessage = <T extends Record<string, string>>(message: UiMessage,
+  messages: T, depth: number): string => {
   const args = Array.isArray(message.a) ? message.a : [];
   // Unknown keys fall back to the key itself so a missing translation is
   // visible instead of silently hiding the notice.
@@ -53,8 +53,8 @@ const formatMessage = (message: UiMessage, messages: Record<string, string>,
 };
 
 /** Formats a published binding value for the active language. */
-export const formatUiText = (raw: string,
-  messages: Record<string, string>): string => {
+export const formatUiText = <T extends Record<string, string>>(raw: string,
+  messages: T): string => {
   const parsed = parseUiText(raw);
   return typeof parsed === "string" ? parsed : formatMessage(parsed, messages, 0);
 };

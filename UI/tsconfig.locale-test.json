@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2019",
+    "module": "commonjs",
+    "outDir": ".locale-test",
+    "rootDir": "src",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "types": [],
+    "isolatedModules": true
+  },
+  "files": ["src/localeResolution.test.ts"]
+}

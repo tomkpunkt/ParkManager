@@ -192,8 +192,11 @@ function App() {
         set('PathBuildSummary', JSON.stringify({ k: 'preflight.warning',
           a: [{ k: 'preflight.pathSteep', a: [] }, 12.4, -0.2] }));
       }}>Meldungsschlüssel testen</button>
-      <button onClick={() => set('Locale', get('Locale') === 'de' ? 'en' : 'de')}>
-        Sprache wechseln</button>
+      <button onClick={() => {
+        const order = ['de', 'en', 'pt-BR'];
+        const index = order.indexOf(get('Locale'));
+        set('Locale', order[(index + 1) % order.length]);
+      }}>Sprache wechseln</button>
       <label>Batch-Bericht öffnen <input type="file" accept=".json" hidden
         onChange={(event) => loadReport(event.target.files?.[0])} /></label>
     </div>

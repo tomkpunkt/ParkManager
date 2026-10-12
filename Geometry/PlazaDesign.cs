@@ -48,6 +48,8 @@ namespace ParkManager.Geometry
         BoundaryAligned = 4,
         Parallelogram = 5,
         Strip = 6,
+        /// <summary>Softly curved, slightly asymmetric figure (natural grammar).</summary>
+        Organic = 7,
     }
 
     internal enum PlazaRoomRole : byte
@@ -181,6 +183,11 @@ namespace ParkManager.Geometry
         internal PlazaGreenKind Kind;
         /// <summary>Room whose edge or interior it belongs to.</summary>
         internal int Room;
+        /// <summary>
+        /// The dominant landscape motif of the design; all other zones are
+        /// secondary features that relate to it.
+        /// </summary>
+        internal bool Primary;
     }
 
     /// <summary>Measured qualities of a design, used by tests and scoring.</summary>
@@ -191,6 +198,10 @@ namespace ParkManager.Geometry
         internal float MainPlazaMinimumWidth;
         internal float RoomArea;
         internal float GreenArea;
+        /// <summary>Share of the plot with a green ground surface.</summary>
+        internal float GreenSurfaceRatio;
+        /// <summary>Share of the plot covered by tree crowns seen from above.</summary>
+        internal float CanopyCoverageRatio;
         internal float CoreScore;
         internal float Compactness;
         internal float Convexity;

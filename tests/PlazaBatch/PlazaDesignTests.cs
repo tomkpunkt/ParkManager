@@ -177,20 +177,66 @@ internal static class PlazaDesignTests
             if (!PlazaComposer.IsSimple(points)) errors.Add("green zone self-intersects");
             if (points.Any(p => !PolygonMath.PointInsideOrBoundary(p, polygon, 0.1f)))
                 errors.Add("green zone leaves the outline");
+            // Inner beds belong to one room: structure of the main square or
+            // the garden of a garden court.
+            var host = zone.Room >= 0 && zone.Room < rooms.Count ? rooms[zone.Room] : rooms[0];
             var inner = zone.Kind is PlazaGreenKind.Parterre or PlazaGreenKind.Island
-                || zone.Kind == PlazaGreenKind.Garden && zone.Room == 0
-                    && points.All(p => PolygonMath.PointInside(p, main));
+                || zone.Kind == PlazaGreenKind.Garden
+                    && points.All(p => PolygonMath.PointInside(p, host.Boundary));
+            if (inner && zone.Kind is PlazaGreenKind.Parterre or PlazaGreenKind.Island) host = rooms[0];
             foreach (var room in rooms)
             {
-                if (inner && room == rooms[0]) continue;
+                if (inner && room == host) continue;
                 if (points.Any(p => PolygonMath.PointInside(p, room.Boundary)))
                 {
                     errors.Add($"green inside {room.Role}");
                     break;
                 }
             }
-            if (inner && !points.All(p => PolygonMath.PointInside(p, main)))
-                errors.Add("inner bed leaves the main square");
+            if (inner && !points.All(p => PolygonMath.PointInside(p, host.Boundary)))
+                errors.Add("inner bed leaves its room");
+        }
+        if (design.GreenZones.Count > 0 && design.GreenZones.Count(z => z.Primary) != 1)
+            errors.Add("no single leading landscape motif");
+        // Court gardens belong to their court, not to the plaza's motif.
+        var motif = design.GreenZones.Where(z => !(rooms[z.Room].Role == PlazaRoomRole.GardenCourt
+            && z.Kind == PlazaGreenKind.Garden)).ToList();
+        if (design.Grammar == PlazaGrammar.Modern && motif.Count > 3)
+            errors.Add($"modern design with {motif.Count} green features");
+        if (design.Grammar == PlazaGrammar.Modern && motif.Count > 1 && motif.Any(z => z.Primary))
+        {
+            var lead = Math.Abs(PolygonMath.SignedArea(motif.First(z => z.Primary).Polygon));
+            if (motif.Any(z => !z.Primary && Math.Abs(PolygonMath.SignedArea(z.Polygon))
+                    > lead * PlazaComposer.ModernCompanionShare + 0.5))
+                errors.Add("modern companion bed rivals the leading motif");
+        }
+
+        // Every room has a recognisable purpose.
+        for (var r = 1; r < rooms.Count; r++)
+        {
+            var room = rooms[r];
+            switch (room.Role)
+            {
+                case PlazaRoomRole.SecondarySquare:
+                    if (PolygonMath.SignedArea(room.Boundary) > 0.65 * PolygonMath.SignedArea(main))
+                        errors.Add("secondary square too close to the main square in size");
+                    if (design.Topology != PlazaTopology.Linear
+                        && !room.Edges.Any(e => e.Role == PlazaEdgeRole.SeatingEdge))
+                        errors.Add("secondary square without a place to sit");
+                    break;
+                case PlazaRoomRole.GardenCourt:
+                    if (!design.GreenZones.Any(z => z.Room == r))
+                        errors.Add("garden court without green");
+                    break;
+                case PlazaRoomRole.EntranceCourt:
+                    if (!room.Edges.Any(e => e.Role == PlazaEdgeRole.Open))
+                        errors.Add("entrance court without an open side");
+                    break;
+                case PlazaRoomRole.Passage:
+                    if (design.FocalPoints.Any(f => PolygonMath.PointInside(f.Position, room.Boundary)))
+                        errors.Add("passage designed as a square");
+                    break;
+            }
         }
         if (!OpenSquareConnected(design)) errors.Add("open main square is fragmented");
         if (design.FocalPoints.Count == 0

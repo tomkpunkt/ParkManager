@@ -51,7 +51,7 @@ namespace ParkManager.Geometry
                 },
                 [PlazaGrammar.Natural] = new GrammarRules
                 {
-                    Shapes = new[] { PlazaCoreShape.Ellipse,
+                    Shapes = new[] { PlazaCoreShape.Organic, PlazaCoreShape.Ellipse,
                         PlazaCoreShape.ChamferedRectangle },
                     CentralShare = 0.32f, RimShare = 0.16f, MinimumRim = 3f,
                     MaximumRim = 16f, CorridorWidth = 4f, TreeSpacing = 6.5f,
@@ -159,6 +159,7 @@ namespace ParkManager.Geometry
                     metrics.RoomArea += PlazaShape.Area(room.Boundary);
             foreach (var zone in design.GreenZones)
                 metrics.GreenArea += PlazaShape.Area(zone.Polygon);
+            metrics.GreenSurfaceRatio = geometry.Area > 0f ? metrics.GreenArea / geometry.Area : 0f;
             timer.Stop();
             metrics.Milliseconds = timer.Elapsed.TotalMilliseconds;
             return design;
@@ -343,6 +344,8 @@ namespace ParkManager.Geometry
                     {
                         Kind = kind, Center = center, Axis = axis,
                         Skew = kind == PlazaCoreShape.Parallelogram ? 0.45f : 0f,
+                        Phase = kind == PlazaCoreShape.Organic
+                            ? OrganicPhase(context, center, axis) : 0f,
                     };
                     if (polygonBased)
                     {
@@ -472,6 +475,22 @@ namespace ParkManager.Geometry
             var areaFit = math.saturate(1f - math.abs(area - targetArea)
                 / math.max(1f, targetArea));
             return 0.40f * free + 0.25f * visible + 0.20f * relation + 0.15f * areaFit;
+        }
+
+        /// <summary>
+        /// An organic square reaches out towards where people arrive and
+        /// recedes where the gardens get their depth.
+        /// </summary>
+        private static float OrganicPhase(Context context, float2 center, float2 axis)
+        {
+            var pull = float2.zero;
+            foreach (var entrance in context.Movement.Entrances)
+                pull += math.normalizesafe(entrance - center);
+            if (math.lengthsq(pull) < 0.25f)
+                return new Unity.Mathematics.Random(Seeds.Mix(context.Seed, 0x6a09e667u))
+                    .NextFloat(0f, 2f * math.PI);
+            var normal = new float2(-axis.y, axis.x);
+            return math.atan2(math.dot(pull, normal), math.dot(pull, axis));
         }
 
         internal static float2 Rotate(float2 direction, float angle)

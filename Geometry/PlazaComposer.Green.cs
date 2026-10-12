@@ -5,6 +5,9 @@ namespace ParkManager.Geometry
 {
     internal static partial class PlazaComposer
     {
+        /// <summary>Largest size of a modern companion bed relative to the leading motif.</summary>
+        internal const float ModernCompanionShare = 0.6f;
+
         /// <summary>Green share of the plot already placed, against the grammar's target.</summary>
         private sealed class GreenBudget
         {
@@ -26,10 +29,11 @@ namespace ParkManager.Geometry
             var geometry = context.Geometry;
             var budget = new GreenBudget
             {
-                Minimum = geometry.Area * context.Rules.GreenMinimum,
+                Minimum = geometry.Area * SoftGreenMinimum(context),
                 Maximum = geometry.Area * context.Rules.GreenMaximum,
             };
             var natural = design.Grammar == PlazaGrammar.Natural;
+            var modern = design.Grammar == PlazaGrammar.Modern;
             var order = new List<int>();
             for (var r = 0; r < design.Rooms.Count; r++)
                 if (design.Rooms[r].Role != PlazaRoomRole.Passage) order.Add(r);
@@ -42,14 +46,18 @@ namespace ParkManager.Geometry
                     if (edge.Role == PlazaEdgeRole.GreenBorder)
                         AddEdgeBeds(context, r, edge, budget, context.Rules.BedDepth);
 
+            AddCourtGardens(context, budget);
             AddInnerBeds(context, budget);
 
             // Below the target: lawns behind the tree rows first, then behind
-            // seating and built edges. Open edges always stay paved.
+            // seating and built edges. Open edges always stay paved. A modern
+            // design keeps its tree rows on paving, so the planted motif
+            // stays the one dominant green figure.
             foreach (var role in new[] { PlazaEdgeRole.TreeRow, PlazaEdgeRole.SeatingEdge,
                          PlazaEdgeRole.ArchitecturalEdge })
             {
                 if (natural || budget.Used >= budget.Minimum) break;
+                if (modern && role == PlazaEdgeRole.TreeRow) continue;
                 foreach (var r in order)
                 foreach (var edge in design.Rooms[r].Edges)
                     if (edge.Role == role && edge.Rim >= 6f && budget.Used < budget.Minimum)
@@ -57,7 +65,151 @@ namespace ParkManager.Geometry
             }
 
             // Still short: deliberate green in the large paved remainders.
-            if (budget.Used < budget.Minimum) FillLeftovers(context, budget);
+            if (!modern && budget.Used < budget.Minimum) FillLeftovers(context, budget);
+            RankLandscape(context);
+        }
+
+        /// <summary>
+        /// The grammar's green target is a preference, not a quota: small and
+        /// narrow plots and linear spaces may stay paved and get their green
+        /// from tree crowns instead.
+        /// </summary>
+        private static float SoftGreenMinimum(Context context)
+        {
+            var size = math.saturate((context.Geometry.Area - 900f) / 2500f);
+            var width = math.saturate((context.Usable - 14f) / 20f);
+            var topology = context.Design.Topology == PlazaTopology.Linear ? 0.4f : 1f;
+            return context.Rules.GreenMinimum * size * width * topology;
+        }
+
+        /// <summary>
+        /// A garden court is a green room: a garden takes its middle, a
+        /// paved walk runs around it.
+        /// </summary>
+        private static void AddCourtGardens(Context context, GreenBudget budget)
+        {
+            var rooms = context.Design.Rooms;
+            for (var r = 0; r < rooms.Count; r++)
+            {
+                var room = rooms[r];
+                if (room.Role != PlazaRoomRole.GardenCourt || budget.Left < 20f) continue;
+                // The garden gives way to the side people arrive from.
+                var arrival = float2.zero;
+                foreach (var corridor in context.Design.MovementCorridors)
+                {
+                    var end = corridor.Points[corridor.Points.Count - 1];
+                    if (DistanceToOutline(end, room.Boundary) < 1.5f)
+                        arrival += math.normalizesafe(end - room.Center);
+                    end = corridor.Points[0];
+                    if (DistanceToOutline(end, room.Boundary) < 1.5f)
+                        arrival += math.normalizesafe(end - room.Center);
+                }
+                var garden = new PlazaShape
+                {
+                    Kind = PlazaCoreShape.Organic, Axis = room.Axis,
+                    Center = room.Center - math.normalizesafe(arrival) * 1f,
+                    // Organic figures reach up to a fifth beyond their extents.
+                    HalfLength = (room.Shape.HalfLength - 3f) * 0.82f,
+                    HalfWidth = (room.Shape.HalfWidth - 3f) * 0.82f,
+                    Phase = room.Shape.Phase + math.PI,
+                };
+                for (var attempt = 0; attempt < 5 && garden.HalfWidth >= 2f; attempt++)
+                {
+                    var polygon = garden.Outline();
+                    var fits = PlazaShape.Area(polygon) <= budget.Left && IsSimple(polygon);
+                    foreach (var point in polygon)
+                        fits &= room.Shape.Contains(point, room.Boundary)
+                            && DistanceToOutline(point, room.Boundary) >= 1.5f
+                            && !NearCorridor(context, point, 0f);
+                    if (fits && KeepsClear(context, polygon, r))
+                    {
+                        var zone = new PlazaGreenZone { Kind = PlazaGreenKind.Garden, Room = r };
+                        zone.Polygon.AddRange(polygon);
+                        context.Design.GreenZones.Add(zone);
+                        budget.Used += PlazaShape.Area(polygon);
+                        break;
+                    }
+                    garden.HalfLength *= 0.85f;
+                    garden.HalfWidth *= 0.85f;
+                }
+            }
+        }
+
+        /// <summary>
+        /// One landscape motif leads: the formal or planted structure of the
+        /// main square if there is one, otherwise the largest bed. A modern
+        /// design keeps at most two clearly smaller companions that follow
+        /// the orientations of the main square; loose splinters are dropped.
+        /// </summary>
+        private static void RankLandscape(Context context)
+        {
+            var design = context.Design;
+            var zones = design.GreenZones;
+            if (zones.Count == 0) return;
+            bool OwnGarden(PlazaGreenZone zone)
+                => design.Rooms[zone.Room].Role == PlazaRoomRole.GardenCourt
+                    && zone.Kind == PlazaGreenKind.Garden;
+            var lead = zones[0];
+            var bestWeight = -1f;
+            foreach (var zone in zones)
+            {
+                // A court garden belongs to its court, not to the plaza's motif.
+                if (OwnGarden(zone) && zones.Exists(other => !OwnGarden(other))) continue;
+                // Formal parterres lead a classic square even when an edge
+                // bed is a little larger; elsewhere size decides.
+                var structure = zone.Kind == PlazaGreenKind.Parterre;
+                var weight = PlazaShape.Area(zone.Polygon) * (structure ? 1.5f : 1f);
+                if (weight <= bestWeight) continue;
+                bestWeight = weight;
+                lead = zone;
+            }
+            lead.Primary = true;
+            if (design.Grammar != PlazaGrammar.Modern) return;
+
+            var leadArea = PlazaShape.Area(lead.Polygon);
+            var axis = design.Rooms[0].Axis;
+            var companions = new List<PlazaGreenZone>();
+            foreach (var zone in zones)
+            {
+                var area = PlazaShape.Area(zone.Polygon);
+                if (zone == lead || OwnGarden(zone) || area < math.max(25f, leadArea * 0.15f)
+                    || !FollowsFrame(zone.Polygon, axis)) continue;
+                companions.Add(zone);
+            }
+            companions.Sort((a, b) => PlazaShape.Area(b.Polygon).CompareTo(
+                PlazaShape.Area(a.Polygon)));
+            if (companions.Count > 2) companions.RemoveRange(2, companions.Count - 2);
+            // A companion that rivals the motif is drawn in around its centre:
+            // the beds are convex, so the smaller figure stays clear as well.
+            foreach (var zone in companions)
+            {
+                var area = PlazaShape.Area(zone.Polygon);
+                var limit = leadArea * ModernCompanionShare * 0.98f;
+                if (area <= limit) continue;
+                var centre = PlazaGeometry.AreaCentroid(zone.Polygon);
+                var scale = math.sqrt(limit / area);
+                for (var i = 0; i < zone.Polygon.Count; i++)
+                    zone.Polygon[i] = centre + (zone.Polygon[i] - centre) * scale;
+            }
+            zones.RemoveAll(zone => zone != lead && !companions.Contains(zone) && !OwnGarden(zone));
+        }
+
+        /// <summary>True when the zone's longest side runs along or across the axis.</summary>
+        private static bool FollowsFrame(List<float2> polygon, float2 axis)
+        {
+            var longest = 0f;
+            var direction = float2.zero;
+            for (var i = 0; i < polygon.Count; i++)
+            {
+                var edge = polygon[(i + 1) % polygon.Count] - polygon[i];
+                var length = math.length(edge);
+                if (length <= longest) continue;
+                longest = length;
+                direction = edge / math.max(0.001f, length);
+            }
+            var along = math.abs(math.dot(direction, axis));
+            // Within about 12 degrees of the axis or of its normal.
+            return along > 0.978f || along < 0.208f;
         }
 
         /// <summary>
@@ -154,7 +306,8 @@ namespace ParkManager.Geometry
             zone.Polygon.Add(at(t1, o0 + depth));
             zone.Polygon.Add(at(t0, o0 + depth));
             if (PolygonMath.SignedArea(zone.Polygon) < 0.0) zone.Polygon.Reverse();
-            if (!KeepsClear(context, zone.Polygon, kind != PlazaGreenKind.Border)) return;
+            if (!KeepsClear(context, zone.Polygon,
+                    kind != PlazaGreenKind.Border ? roomIndex : -1)) return;
             context.Design.GreenZones.Add(zone);
             budget.Used += PlazaShape.Area(zone.Polygon);
         }
@@ -179,11 +332,16 @@ namespace ParkManager.Geometry
             var main = design.Rooms[0];
             var kind = main.Shape.Kind;
             if (kind != PlazaCoreShape.Rectangle && kind != PlazaCoreShape.ChamferedRectangle
-                && kind != PlazaCoreShape.Parallelogram && kind != PlazaCoreShape.Ellipse)
+                && kind != PlazaCoreShape.Parallelogram && kind != PlazaCoreShape.Ellipse
+                && kind != PlazaCoreShape.Organic)
                 return;
             var length = main.Shape.HalfLength;
             var width = main.Shape.HalfWidth;
-            if (PlazaShape.Area(main.Boundary) < 1600f || width * 2f < 34f) return;
+            // The modern island is the design's leading motif, so it comes
+            // in on medium squares already.
+            var modern = design.Grammar == PlazaGrammar.Modern;
+            if (PlazaShape.Area(main.Boundary) < (modern ? 700f : 1600f)
+                || width * 2f < (modern ? 22f : 34f)) return;
             var u = main.Axis;
             var v = new float2(-u.y, u.x);
             var c = main.Center;
@@ -210,7 +368,7 @@ namespace ParkManager.Geometry
                 {
                     var side = random.NextBool() ? 1f : -1f;
                     var shift = (random.NextBool() ? 1f : -1f) * length * 0.12f;
-                    var islandWidth = math.clamp(width * 0.16f, 3f, 8f);
+                    var islandWidth = math.clamp(width * 0.28f, 3f, 9f);
                     var offset = side * width * 0.42f;
                     AddInnerQuad(context, budget, c, u, v, shift - length * 0.55f,
                         shift + length * 0.55f, offset - islandWidth * 0.5f,
@@ -326,7 +484,7 @@ namespace ParkManager.Geometry
                     {
                         if (!IsSimple(candidate)
                             || PlazaShape.Area(candidate) < rawArea * 0.8f
-                            || !KeepsClear(context, candidate, false)) continue;
+                            || !KeepsClear(context, candidate, -1)) continue;
                         var zone = new PlazaGreenZone
                         {
                             Kind = PlazaGreenKind.Garden,
@@ -393,16 +551,16 @@ namespace ParkManager.Geometry
                     Constraint = FreeAt, Salt = 5u,
                 };
                 request.Centres.Add(geometry.CellCenter(best));
-                request.Axes.Add(geometry.MajorAxis);
-                request.Axes.Add(geometry.MinorAxis);
-                if (grammar == PlazaGrammar.Modern)
-                    request.Axes.Add(Rotate(geometry.MajorAxis, math.radians(25f)));
+                // Follow the frame of the main square, not the plot.
+                var frame = context.Design.Rooms[0].Axis;
+                request.Axes.Add(frame);
+                request.Axes.Add(new float2(-frame.y, frame.x));
                 request.Aspects.Add(1f);
                 request.Aspects.Add(0.6f);
                 request.Aspects.Add(0.4f);
                 if (!FitRoom(context, request, out var shape)) continue;
                 var polygon = shape.Outline();
-                if (!IsSimple(polygon) || !KeepsClear(context, polygon, false)) continue;
+                if (!IsSimple(polygon) || !KeepsClear(context, polygon, -1)) continue;
                 var zone = new PlazaGreenZone
                 {
                     Kind = PlazaGreenKind.Garden,
@@ -513,15 +671,15 @@ namespace ParkManager.Geometry
         }
 
         /// <summary>
-        /// Green may not reach into a room (unless it is an inner bed of the
-        /// main square), across a corridor or into other green.
+        /// Green may not reach into a room (unless it is an inner bed of
+        /// that room), across a corridor or into other green.
         /// </summary>
-        private static bool KeepsClear(Context context, List<float2> zone, bool inner)
+        private static bool KeepsClear(Context context, List<float2> zone, int innerRoom)
         {
             var rooms = context.Design.Rooms;
             for (var r = 0; r < rooms.Count; r++)
             {
-                if (inner && r == 0) continue;
+                if (r == innerRoom) continue;
                 var room = rooms[r];
                 foreach (var point in zone)
                     if (room.Shape.Contains(point, room.Boundary)) return false;

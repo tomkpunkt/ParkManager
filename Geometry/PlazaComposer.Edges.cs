@@ -225,6 +225,18 @@ namespace ParkManager.Geometry
                     : PlazaEdgeRole.ArchitecturalEdge;
             }
 
+            // A secondary square is a place to stay: it always gets a
+            // seating edge, on its calmest side.
+            if (room.Role == PlazaRoomRole.SecondarySquare
+                && !edges.Exists(edge => edge.Role == PlazaEdgeRole.SeatingEdge))
+            {
+                PlazaRoomEdge calm = null;
+                foreach (var edge in edges)
+                    if (!edge.Arrival && edge.Rim >= 1.5f && (calm == null || edge.Rim > calm.Rim))
+                        calm = edge;
+                if (calm != null) calm.Role = PlazaEdgeRole.SeatingEdge;
+            }
+
             // Too little depth for planting: a built edge instead of green.
             foreach (var edge in edges)
             {

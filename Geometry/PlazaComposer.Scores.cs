@@ -14,6 +14,7 @@ namespace ParkManager.Geometry
         {
             var design = context.Design;
             var metrics = design.Metrics;
+            metrics.CanopyCoverageRatio = CanopyCoverage(context);
             metrics.SpatialHierarchy = HierarchyScore(context);
             metrics.GreenComposition = GreenScore(context);
             metrics.EdgeDiversity = EdgeScore(design.Rooms[0]);
@@ -53,13 +54,50 @@ namespace ParkManager.Geometry
                 quality += math.saturate(width / 4f) * math.saturate(area / 60f);
             }
             share /= context.Geometry.Area;
-            var target = (context.Rules.GreenMinimum + context.Rules.GreenMaximum) * 0.5f;
-            var range = (context.Rules.GreenMaximum - context.Rules.GreenMinimum) * 0.5f;
-            var shareFit = math.saturate(1f - math.max(0f, math.abs(share - target) - range)
-                / math.max(0.05f, target));
+            // Green ground and tree crowns both count as perceived green;
+            // only the ground surface is held to the grammar's maximum.
+            var perceived = share + 0.6f * context.Design.Metrics.CanopyCoverageRatio;
+            var shortfall = math.max(0f, SoftGreenMinimum(context) - perceived);
+            var excess = math.max(0f, share - context.Rules.GreenMaximum);
+            var shareFit = math.saturate(1f - (shortfall + excess)
+                / math.max(0.05f, context.Rules.GreenMaximum * 0.5f));
             var shapeFit = zones.Count > 0 ? quality / zones.Count : 0f;
             var fragmentation = 1f - math.saturate((zones.Count - 6) / 6f);
             return 0.5f * shareFit + 0.3f * shapeFit + 0.2f * fragmentation;
+        }
+
+        /// <summary>
+        /// Share of the plot under tree crowns seen from above: row trees
+        /// with a crown that follows their spacing, groves as closed canopy.
+        /// </summary>
+        private static float CanopyCoverage(Context context)
+        {
+            var design = context.Design;
+            var geometry = context.Geometry;
+            var trees = new List<float2>();
+            var crowns = new List<float>();
+            foreach (var row in design.TreeRows)
+                for (var i = 0; i < row.Count; i++)
+                {
+                    trees.Add(math.lerp(row.Start, row.End, row.Count > 1 ? i / (row.Count - 1f) : 0f));
+                    crowns.Add(math.clamp(row.Spacing * 0.6f, 2.5f, 4.5f));
+                }
+            var covered = 0;
+            var inside = 0;
+            for (var index = 0; index < geometry.Inside.Length; index++)
+            {
+                if (!geometry.Inside[index]) continue;
+                inside++;
+                var point = geometry.CellCenter(index);
+                var hit = false;
+                for (var t = 0; t < trees.Count && !hit; t++)
+                    hit = math.distancesq(point, trees[t]) <= crowns[t] * crowns[t];
+                for (var g = 0; g < design.TreeGroups.Count && !hit; g++)
+                    hit = PolygonMath.PointInside(point, design.TreeGroups[g])
+                        && DistanceToOutline(point, design.TreeGroups[g]) >= 1f;
+                if (hit) covered++;
+            }
+            return inside > 0 ? (float)covered / inside : 0f;
         }
 
         private static float EdgeScore(PlazaRoom main)

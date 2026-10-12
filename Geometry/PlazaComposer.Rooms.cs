@@ -6,6 +6,7 @@ namespace ParkManager.Geometry
     internal static partial class PlazaComposer
     {
         private const float PassageWidth = 5f;
+        private const float GardenCourtWidth = 14f;
 
         private static bool BuildRooms(Context context, PlazaTopology topology)
         {
@@ -145,7 +146,8 @@ namespace ParkManager.Geometry
                         + 0.06f * (1f - aligned)
                         + (shape.Kind == PlazaCoreShape.Parallelogram ? 0.06f : 0f);
                 default:
-                    return 0f;
+                    // Soft, asymmetric contours rather than a perfect circle.
+                    return shape.Kind == PlazaCoreShape.Organic ? 0.06f : 0f;
             }
         }
 
@@ -305,21 +307,39 @@ namespace ParkManager.Geometry
                 var request = SecondaryRequest(context, centres[i],
                     mainArea * (garden ? 0.3f : 0.45f), garden);
                 if (!FitRoom(context, request, out var shape)) continue;
+                // A garden court needs room for a garden and a walk around it.
+                garden &= PlazaShape.MinimumWidth(shape.Outline()) >= GardenCourtWidth;
                 AddRoom(context, shape, garden ? PlazaRoomRole.GardenCourt
-                    : PlazaRoomRole.SecondarySquare, garden ? 0.35f : 0.55f);
+                    : PlazaRoomRole.SecondarySquare, garden ? 0.35f : 0.45f);
             }
             if (context.Design.Rooms.Count < 2) return false;
             AddPassages(context);
             return true;
         }
 
+        /// <summary>
+        /// A compact plot divided into two rooms with different purposes:
+        /// the main square takes the side people arrive on, the second room
+        /// the quieter side, as a calmer place to stay. On a compact plot it
+        /// is a chamber attached to the square, not a separate figure.
+        /// </summary>
         private static bool SequenceBySplit(Context context)
         {
             var geometry = context.Geometry;
+            var origin = geometry.BoxCenter;
             var axis = geometry.MajorAxis;
             var length = geometry.MajorSpan;
-            var origin = geometry.BoxCenter;
-            foreach (var side in new[] { -1f, 1f })
+            var arrivals = Arrivals(context, origin, axis);
+            if (geometry.Elongation < 1.3f
+                && math.abs(Arrivals(context, origin, geometry.MinorAxis)) > math.abs(arrivals))
+            {
+                axis = geometry.MinorAxis;
+                length = geometry.MinorSpan;
+                arrivals = Arrivals(context, origin, axis);
+            }
+            var chamber = geometry.Elongation < 1.6f && geometry.Convexity >= 0.9f;
+            var first = arrivals < 0f ? -1f : 1f;
+            foreach (var side in new[] { first, -first })
             {
                 context.Design.Rooms.Clear();
                 // The main square takes a little more than half of the plot.
@@ -335,6 +355,7 @@ namespace ParkManager.Geometry
                 var second = SecondaryRequest(context,
                     origin - axis * (side * length * 0.3f), mainArea * 0.4f, false);
                 second.Centres.Add(origin - axis * (side * length * 0.25f));
+                if (chamber) second.AvoidGap = 0.6f;
                 second.Constraint = p => math.dot(p - origin, axis) * side <= -length * 0.05f;
                 if (!FitRoom(context, second, out var secondShape)) continue;
                 AddRoom(context, secondShape, PlazaRoomRole.SecondarySquare, 0.5f);
@@ -343,6 +364,15 @@ namespace ParkManager.Geometry
             }
             context.Design.Rooms.Clear();
             return false;
+        }
+
+        /// <summary>Sum of the entrances' offsets along the axis: where people arrive.</summary>
+        private static float Arrivals(Context context, float2 origin, float2 axis)
+        {
+            var sum = 0f;
+            foreach (var entrance in context.Movement.Entrances)
+                sum += math.dot(entrance - origin, axis);
+            return sum;
         }
 
         /// <summary>Gap between rooms of a sequence, room for a passage.</summary>
@@ -355,8 +385,9 @@ namespace ParkManager.Geometry
         {
             var geometry = context.Geometry;
             var grammar = context.Design.Grammar;
-            var shapes = garden || grammar == PlazaGrammar.Natural
-                ? new[] { PlazaCoreShape.Ellipse }
+            var shapes = grammar == PlazaGrammar.Natural
+                ? new[] { PlazaCoreShape.Organic, PlazaCoreShape.Ellipse }
+                : garden ? new[] { PlazaCoreShape.Ellipse }
                 : grammar == PlazaGrammar.Classic
                     ? new[] { PlazaCoreShape.Rectangle, PlazaCoreShape.Ellipse }
                     : new[] { PlazaCoreShape.Ellipse, PlazaCoreShape.Parallelogram };
@@ -376,17 +407,21 @@ namespace ParkManager.Geometry
             return request;
         }
 
-        /// <summary>Connects every room to the main square with a passage.</summary>
+        /// <summary>
+        /// Connects every room with a passage to the first room on its way
+        /// to the main square, so a passage never runs through another room.
+        /// </summary>
         private static void AddPassages(Context context)
         {
             var rooms = context.Design.Rooms;
             var count = rooms.Count;
             for (var i = 1; i < count; i++)
             {
-                var path = context.Movement.ShortestPath(rooms[i].Center, rooms[0].Center);
-                Link(context, 0, i);
+                var target = FirstRoomOnTheWay(context, i, count);
+                var path = context.Movement.ShortestPath(rooms[i].Center, rooms[target].Center);
+                Link(context, target, i);
                 if (path == null) continue;
-                var clipped = ClipBetween(path, rooms[i], rooms[0]);
+                var clipped = ClipBetween(path, rooms[i], rooms[target]);
                 if (clipped.Count < 2 || PlazaMovement.PolylineLength(clipped) < 1f) continue;
                 // Shortest paths hug concave corners; a passage needs its
                 // full width inside the plot, so try narrower ones too.
@@ -415,11 +450,30 @@ namespace ParkManager.Geometry
                 passage.Boundary.AddRange(strip);
                 rooms.Add(passage);
                 Link(context, i, rooms.Count - 1);
-                Link(context, 0, rooms.Count - 1);
-                var corridor = new PlazaCorridor { Width = PassageWidth, Room = 0 };
+                Link(context, target, rooms.Count - 1);
+                var corridor = new PlazaCorridor { Width = PassageWidth, Room = target };
                 corridor.Points.AddRange(clipped);
                 context.Design.MovementCorridors.Add(corridor);
             }
+        }
+
+        private static int FirstRoomOnTheWay(Context context, int from, int count)
+        {
+            var rooms = context.Design.Rooms;
+            var path = context.Movement.ShortestPath(rooms[from].Center, rooms[0].Center);
+            if (path == null) return 0;
+            for (var i = 0; i + 1 < path.Count; i++)
+            {
+                var pieces = math.max(1, (int)math.ceil(math.distance(path[i], path[i + 1])));
+                for (var k = 0; k <= pieces; k++)
+                {
+                    var point = math.lerp(path[i], path[i + 1], (float)k / pieces);
+                    for (var r = 0; r < count; r++)
+                        if (r != from && rooms[r].Shape.Contains(point, rooms[r].Boundary))
+                            return r;
+                }
+            }
+            return 0;
         }
 
         /// <summary>Moves interior polyline points to at least distance from the boundary.</summary>

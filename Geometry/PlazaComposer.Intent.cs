@@ -135,8 +135,8 @@ namespace ParkManager.Geometry
             for (var r = 1; r < design.Rooms.Count; r++)
             {
                 var room = design.Rooms[r];
-                if (room.Role != PlazaRoomRole.SecondarySquare
-                    && room.Role != PlazaRoomRole.GardenCourt) continue;
+                // A garden court has a garden at its heart, not a centerpiece.
+                if (room.Role != PlazaRoomRole.SecondarySquare) continue;
                 design.FocalPoints.Add(new PlazaFocalPoint
                 {
                     Position = room.Center, Kind = PlazaFocalKind.Secondary,
@@ -284,8 +284,7 @@ namespace ParkManager.Geometry
                     }
                 }
                 if (room.Role == PlazaRoomRole.GardenCourt
-                    || room.Role == PlazaRoomRole.SecondarySquare
-                    && design.Topology == PlazaTopology.Linear)
+                    || room.Role == PlazaRoomRole.SecondarySquare)
                 {
                     var quiet = new PlazaPlacementZone { Kind = PlazaFurnitureZoneKind.QuietCorner };
                     quiet.Polygon.AddRange(room.Boundary);

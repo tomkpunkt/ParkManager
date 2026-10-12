@@ -29,7 +29,8 @@ internal static class PlazaDesignJson
         }).ToArray(),
         greenZones = design.GreenZones.Select(zone => new
         {
-            kind = zone.Kind.ToString(), room = zone.Room, polygon = Points(zone.Polygon),
+            kind = zone.Kind.ToString(), room = zone.Room, primary = zone.Primary,
+            polygon = Points(zone.Polygon),
         }).ToArray(),
         corridors = design.MovementCorridors.Select(c => new
         {
@@ -69,6 +70,8 @@ internal static class PlazaDesignJson
             mainShare = Share(design.Metrics.MainPlazaArea, design.Metrics.PolygonArea),
             roomShare = Share(design.Metrics.RoomArea, design.Metrics.PolygonArea),
             greenShare = Share(design.Metrics.GreenArea, design.Metrics.PolygonArea),
+            greenSurfaceRatio = design.Metrics.GreenSurfaceRatio,
+            canopyCoverageRatio = design.Metrics.CanopyCoverageRatio,
             minimumWidth = design.Metrics.MainPlazaMinimumWidth,
             compactness = design.Metrics.Compactness,
             convexity = design.Metrics.Convexity,

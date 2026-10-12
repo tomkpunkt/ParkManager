@@ -34,6 +34,7 @@ td.name{max-width:110px;font-weight:bold}
     <span><i style="background:#ece2c8;outline:2px solid #fff6dc"></i>Hauptplatz</span>
     <span><i style="background:#6aa75a"></i>Grün</span>
     <span><i style="background:#86c06d"></i>Parterre/Insel</span>
+    <span><i style="background:#6aa75a;outline:2px solid #1f4a26"></i>Leitmotiv</span>
     <span><i style="background:#2f6b38;border-radius:7px"></i>Baum</span>
     <span><i style="background:#e0893a"></i>Sitzen</span>
     <span><i style="background:#d9474b;border-radius:7px"></i>Fokus</span>
@@ -67,7 +68,7 @@ function svg(c) {
     for (const r of d.rooms) if (r.role !== 'Passage')
       s += `<polygon points="${pts(r.boundary)}" fill="${r.role === 'MainSquare' ? '#ece2c8' : '#e4d8bd'}" stroke="#fff6dc" stroke-width="${u * (r.role === 'MainSquare' ? 1.4 : 0.8)}"/>`;
     for (const z of d.greenZones)
-      s += `<polygon points="${pts(z.polygon)}" fill="${z.kind === 'Parterre' || z.kind === 'Island' ? '#86c06d' : '#6aa75a'}" stroke="#4f8a43" stroke-width="${u * 0.5}"/>`;
+      s += `<polygon points="${pts(z.polygon)}" fill="${z.kind === 'Parterre' || z.kind === 'Island' ? '#86c06d' : '#6aa75a'}" stroke="${z.primary ? '#1f4a26' : '#4f8a43'}" stroke-width="${u * (z.primary ? 1.6 : 0.5)}"/>`;
     for (const r of d.rooms) for (const e of r.edges)
       s += `<polyline points="${pts(e.points)}" fill="none" stroke="${edgeColor[e.role]}" stroke-width="${u * 2.2}" stroke-linecap="round" stroke-opacity="0.9"/>`;
   }
@@ -121,7 +122,7 @@ function render() {
       const d = c.design, m = d.metrics, sc = m.scores;
       html += `<td><div class="card ${c.errors.length ? 'fail' : ''}">${svg(c)}
         <div class="meta"><b>${names[d.topology] || d.topology}</b> · <b>${names[d.grammar] || d.grammar}</b> · ${d.rooms.length} Räume<br>
-        Platz ${(m.mainShare * 100).toFixed(0)} % · Räume ${(m.roomShare * 100).toFixed(0)} % · Grün ${(m.greenShare * 100).toFixed(0)} % · ${m.milliseconds.toFixed(0)} ms</div>
+        Platz ${(m.mainShare * 100).toFixed(0)} % · Räume ${(m.roomShare * 100).toFixed(0)} % · Grün ${(m.greenSurfaceRatio * 100).toFixed(0)} % · Krone ${(m.canopyCoverageRatio * 100).toFixed(0)} % · ${m.milliseconds.toFixed(0)} ms</div>
         <div class="scores">${score('H', sc.hierarchy)}${score('G', sc.green)}${score('K', sc.edges)}${score('S', sc.identity)}${score('E', sc.entrances)}</div>
         ${c.errors.map((e) => `<div class="err">${e}</div>`).join('')}</div></td>`;
     }

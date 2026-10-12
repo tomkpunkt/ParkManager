@@ -24,9 +24,13 @@ namespace ParkManager.Geometry
         internal IReadOnlyList<float2> Template;
         /// <summary>Parallelogram shear along the axis, as share of the width.</summary>
         internal float Skew;
+        /// <summary>Direction (radians, in the shape's frame) an organic figure bulges to.</summary>
+        internal float Phase;
 
         private const int EllipseSegments = 48;
         private const float ChamferFraction = 0.22f;
+        private const float OrganicBulge = 0.2f;
+        private const float OrganicWave = 0.08f;
 
         internal float2 Normal => new float2(-Axis.y, Axis.x);
 
@@ -64,6 +68,19 @@ namespace ParkManager.Geometry
                     outline.Add(Center + Axis * (HalfLength - shear) - Normal * HalfWidth);
                     outline.Add(Center + Axis * (HalfLength + shear) + Normal * HalfWidth);
                     outline.Add(Center + Axis * (-HalfLength + shear) + Normal * HalfWidth);
+                    break;
+                case PlazaCoreShape.Organic:
+                    // An ellipse with a soft bulge towards Phase and a weaker
+                    // second harmonic: asymmetric, but smooth and convex enough
+                    // to keep its width.
+                    for (var i = 0; i < EllipseSegments; i++)
+                    {
+                        var angle = 2f * math.PI * i / EllipseSegments;
+                        var radius = 1f + OrganicBulge * math.cos(angle - Phase)
+                            + OrganicWave * math.cos(2f * angle - 2f * Phase + 1.3f);
+                        outline.Add(Center + Axis * (math.cos(angle) * HalfLength * radius)
+                            + Normal * (math.sin(angle) * HalfWidth * radius));
+                    }
                     break;
                 case PlazaCoreShape.Ellipse:
                     for (var i = 0; i < EllipseSegments; i++)

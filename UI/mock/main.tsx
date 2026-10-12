@@ -32,8 +32,34 @@ type PlazaDesignView = { style: string; mainPlaza: DesignPoint[];
   rooms: { role: string; boundary: DesignPoint[] }[];
   greenZones: { kind: string; polygon: DesignPoint[] }[];
   treeRows: { points: DesignPoint[] }[];
-  focalPoints: { x: number; y: number; kind: string }[] };
+  focalPoints: { x: number; y: number; kind: string }[];
+  furnishing?: PlazaFurnishingView };
+type PlazaFurnishingView = {
+  centerpieces: { x: number; y: number; radius: number }[];
+  furniture: { kind: string; x: number; y: number; rotation: number; radius: number; size: number }[] };
 const toSvg = (points: DesignPoint[]) => points.map((p) => `${p.x * 8},${p.y * 8}`).join(' ');
+
+/** Phase-2 furnishing in mock units (8 per metre). */
+function FurnishingOverlay({ furnishing }: { furnishing: PlazaFurnishingView }) {
+  return <g data-testid="furnishing-overlay">
+    {furnishing.centerpieces.map((c, i) => <circle key={`c${i}`} cx={c.x * 8} cy={c.y * 8}
+      r={c.radius * 8} style={{ fill: '#4aa3df', stroke: '#e8f6ff', strokeWidth: 2 }} />)}
+    {furnishing.furniture.filter((f) => f.kind === 'Tree').map((t, i) =>
+      <circle key={`t${i}`} cx={t.x * 8} cy={t.y * 8} r={t.size * 4}
+        style={{ fill: '#2f6b38', fillOpacity: 0.7, stroke: '#1d4424' }} />)}
+    {furnishing.furniture.filter((f) => f.kind === 'Bench').map((b, i) => {
+      // Front (sin r, cos r) faces the room; the seat runs across it.
+      const fx = Math.sin(b.rotation), fy = Math.cos(b.rotation);
+      const half = b.radius * 8;
+      return <line key={`b${i}`} x1={b.x * 8 + fy * half} y1={b.y * 8 - fx * half}
+        x2={b.x * 8 - fy * half} y2={b.y * 8 + fx * half}
+        style={{ stroke: '#6b4a2b', strokeWidth: 5, strokeLinecap: 'round' }} />;
+    })}
+    {furnishing.furniture.filter((f) => f.kind === 'Lamp').map((l, i) =>
+      <circle key={`l${i}`} cx={l.x * 8} cy={l.y * 8} r={4}
+        style={{ fill: '#ffd34d', stroke: '#5a4500' }} />)}
+  </g>;
+}
 type MapPoint = { x: number; y: number };
 /** Closest point on the closed outline, as the in-game entrance tool does. */
 const snapToOutline = (point: MapPoint, outline: MapPoint[]): MapPoint => {
@@ -150,7 +176,9 @@ function App() {
       body: JSON.stringify({ polygon: previewPoints.map((p) => ({ x: p.x / 8, y: p.y / 8 })),
         entrances: gates.map((p) => ({ x: p.x / 8, y: p.y / 8 })), plazaStyle: designStyle, seed: 7 }) })
       .then((response) => response.json())
-      .then((result) => { if (!cancelled) setDesign(result as PlazaDesignView); })
+      .then((result) => {
+        if (!cancelled) setDesign({ ...result.design, furnishing: result.furnishing } as PlazaDesignView);
+      })
       .catch(() => { if (!cancelled) setDesign(null); });
     return () => { cancelled = true; };
   }, [designStyle, points, entrances, pointCount]);
@@ -240,18 +268,14 @@ function App() {
             style={livePlan && pathPlanReady && get('SiteType') !== 1
               ? { fill: '#78a05a', stroke: '#e6e6c8' } : undefined} />
           {design ? <g data-testid="design-overlay">
+            {design.mainPlaza.length ? <polygon data-testid="design-main" points={toSvg(design.mainPlaza)}
+              style={{ fill: '#ece2c8', stroke: '#fff6dc', strokeWidth: 3 }} /> : null}
             {design.rooms.slice(1).filter((room) => room.role !== 'Passage').map((room, i) =>
               <polygon key={`s${i}`} points={toSvg(room.boundary)}
                 style={{ fill: '#e2d5b5', stroke: '#fff6dc' }} />)}
             {design.greenZones.map((zone, i) => <polygon key={`g${i}`} points={toSvg(zone.polygon)}
               style={{ fill: '#6aa75a', stroke: '#4f8a43' }} />)}
-            {design.mainPlaza.length ? <polygon data-testid="design-main" points={toSvg(design.mainPlaza)}
-              style={{ fill: '#ece2c8', stroke: '#fff6dc', strokeWidth: 3 }} /> : null}
-            {design.treeRows.flatMap((row, r) => row.points.map((p, i) =>
-              <circle key={`t${r}-${i}`} cx={p.x * 8} cy={p.y * 8} r={9}
-                style={{ fill: '#2f6b38', stroke: '#1d4424' }} />))}
-            {design.focalPoints.map((f, i) => <circle key={`f${i}`} cx={f.x * 8} cy={f.y * 8}
-              r={f.kind === 'Primary' ? 9 : 6} style={{ fill: '#d9474b', stroke: 'white', strokeWidth: 2 }} />)}
+            {design.furnishing ? <FurnishingOverlay furnishing={design.furnishing} /> : null}
           </g> : null}
           {livePlan && decorationPlanReady && livePlan.lake && livePlan.lake.length > 2
             ? <polygon data-testid="live-lake"

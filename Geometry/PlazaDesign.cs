@@ -245,6 +245,10 @@ namespace ParkManager.Geometry
         internal readonly PlazaDesignMetrics Metrics = new PlazaDesignMetrics();
         /// <summary>Why no design could be composed; null on success.</summary>
         internal string Failure;
+        /// <summary>Analysis of the outline the design was composed for.</summary>
+        internal PlazaGeometry Geometry;
+        /// <summary>Entrances and walking lines the design was composed for.</summary>
+        internal PlazaMovement Movement;
 
         /// <summary>Outline of the main square (room 0).</summary>
         internal List<float2> MainPlaza => Rooms.Count > 0 ? Rooms[0].Boundary

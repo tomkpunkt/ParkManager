@@ -107,8 +107,17 @@ entrance reaches the main plaza, tree rows stay on the rim, and equal input
 gives an equal design. The batch run writes `plaza-designs.json` next to its
 report.
 
+`PlazaFurnisher` (`Geometry/PlazaFurnisher*.cs`, `PlazaFurnishing.cs`) furnishes
+every design with the default palette (trees, benches, lamps, fountain) and
+`PlazaFurnishingTests` checks the result: objects stay on the plot and apart,
+off corridors, entrances and (except trees) beds, avenues are evenly spaced,
+mirrored avenues have equal counts, entrances get a pair of lamps or none,
+every room stays reachable from every entrance, and the furnishing is
+deterministic.
+
 For visual review, start the mock and open `http://localhost:8765/designs.html`:
 a gallery of all cases and styles, computed live from the C# code, with
 toggleable layers for the room graph, surfaces with edge roles and the design
-intent, plus the soft scores (H hierarchy, G green, K edges, S style, E entrances). In the
+intent, plus the soft scores (H hierarchy, G green, K edges, S style, E entrances)
+and the furnishing layer (trees, benches, lamps, fountain). In the
 mock itself, "Plaza-Entwurf" overlays the design for the drawn outline.

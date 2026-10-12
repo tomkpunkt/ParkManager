@@ -466,12 +466,13 @@ test('a built park is picked on the map and removed as a whole', async ({ page }
   await expect(mainAction(page)).toHaveAttribute('data-action', 'drawOutline');
 });
 
-test('the phase-1 plaza design overlays the drawn outline', async ({ page }) => {
+test('the plaza design and its furnishing overlay the drawn outline', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'outline', exact: true }).click();
   await expect(page.getByTestId('design-overlay')).toHaveCount(0);
   await page.getByTestId('design-style').selectOption({ label: 'Klassisch' });
   await expect(page.getByTestId('design-main')).toBeVisible();
+  await expect(page.getByTestId('furnishing-overlay')).toHaveCount(1);
   await page.getByTestId('design-style').selectOption({ label: 'aus' });
   await expect(page.getByTestId('design-overlay')).toHaveCount(0);
 });

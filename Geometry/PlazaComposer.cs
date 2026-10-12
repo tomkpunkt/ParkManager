@@ -91,6 +91,8 @@ namespace ParkManager.Geometry
                 return design;
             }
             var movement = new PlazaMovement(geometry, entrances);
+            design.Geometry = geometry;
+            design.Movement = movement;
             var metrics = design.Metrics;
             metrics.PolygonArea = geometry.Area;
             metrics.Compactness = geometry.Compactness;

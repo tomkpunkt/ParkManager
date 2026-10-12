@@ -73,8 +73,8 @@ internal static class MockServer
                     PropertyNameCaseInsensitive = true });
             return Results.Json(PlazaVariant(input ?? new PlazaVariantRequest()));
         });
-        // Phase-1 plaza composer: all test outlines in every style, and one
-        // live design for the outline drawn in the mock.
+        // Plaza composer: all test outlines in every style, and one live
+        // design with its furnishing for the outline drawn in the mock.
         app.MapGet("/api/plaza-designs", () => Results.Json(PlazaDesignTests.Run(new List<string>())));
         app.MapPost("/api/plaza-design", async (HttpRequest request) =>
         {
@@ -86,7 +86,13 @@ internal static class MockServer
                 input.Polygon.Select(p => new float2(p.X, p.Y)).ToList(),
                 input.Entrances.Select(p => new float2(p.X, p.Y)).ToList(),
                 (PlazaStyle)Math.Clamp(input.PlazaStyle, 0, 4), Math.Max(1, input.Seed));
-            return Results.Json(PlazaDesignJson.Describe(design));
+            var furnishing = PlazaFurnisher.Furnish(design, PlazaPalette.Default(),
+                Math.Max(1, input.Seed));
+            return Results.Json(new
+            {
+                design = PlazaDesignJson.Describe(design),
+                furnishing = PlazaFurnishingTests.Describe(furnishing),
+            });
         });
         Console.WriteLine($"ParkManager live mock: http://localhost:{port}/");
         await app.RunAsync();

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Plaza-Entwürfe – Phase 1.5</title>
+<title>Plaza-Entwürfe – Phase 2</title>
 <style>
 body{margin:0;background:#1b2622;color:#e9f1ec;font:13px/1.4 Arial,sans-serif}
 header{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;background:#0f1916;border-bottom:1px solid #35504a}
@@ -25,10 +25,11 @@ td.name{max-width:110px;font-weight:bold}
 </style></head>
 <body>
 <header>
-  <h1>Plaza-Entwürfe · Phase 1.5</h1>
+  <h1>Plaza-Entwürfe · Phase 2</h1>
   <label><input type="checkbox" id="graph">Raumgraph</label>
   <label><input type="checkbox" id="surface" checked>Oberflächen &amp; Raumkanten</label>
-  <label><input type="checkbox" id="intent" checked>Gestaltungsabsicht</label>
+  <label><input type="checkbox" id="intent">Gestaltungsabsicht</label>
+  <label><input type="checkbox" id="furnish" checked>Ausstattung</label>
   <div class="legend">
     <span><i style="background:#d8cfbb"></i>Pflaster</span>
     <span><i style="background:#ece2c8;outline:2px solid #fff6dc"></i>Hauptplatz</span>
@@ -38,6 +39,9 @@ td.name{max-width:110px;font-weight:bold}
     <span><i style="background:#2f6b38;border-radius:7px"></i>Baum</span>
     <span><i style="background:#e0893a"></i>Sitzen</span>
     <span><i style="background:#d9474b;border-radius:7px"></i>Fokus</span>
+    <span><i style="background:#6b4a2b"></i>Bank</span>
+    <span><i style="background:#ffd34d;border-radius:7px"></i>Laterne</span>
+    <span><i style="background:#4aa3df;border-radius:7px"></i>Brunnen</span>
     <span>Kanten: <i style="background:#2f6b38"></i>Bäume <i style="background:#5fbf4a"></i>Grün <i style="background:#e0893a"></i>Sitzen <i style="background:#7d7d8a"></i>Bau <i style="background:#5cc9fa"></i>offen</span>
   </div>
   <span id="summary"></span>
@@ -62,6 +66,7 @@ function svg(c) {
   const graph = document.getElementById('graph').checked;
   const surface = document.getElementById('surface').checked;
   const intent = document.getElementById('intent').checked;
+  const furnish = document.getElementById('furnish').checked && c.furnishing;
   let s = `<svg viewBox="${minX - pad} ${-(minY + size - pad)} ${size} ${size}"><g transform="scale(1,-1)">`;
   s += `<polygon points="${pts(c.polygon)}" fill="${surface ? '#d8cfbb' : '#2c3d37'}" stroke="#f4efe2" stroke-width="${u}"/>`;
   if (surface) {
@@ -97,9 +102,37 @@ function svg(c) {
     for (const f of d.focalPoints)
       s += `<circle cx="${f.x}" cy="${f.y}" r="${u * (f.kind === 'Primary' ? 5 : 3.2)}" fill="#d9474b" stroke="#fff" stroke-width="${u * 0.6}"/>`;
   }
+  if (furnish) {
+    const f = c.furnishing;
+    for (const p of f.centerpieces)
+      s += `<circle cx="${p.x}" cy="${p.y}" r="${p.radius}" fill="#4aa3df" stroke="#e8f6ff" stroke-width="${u * 0.8}"/>`
+        + `<circle cx="${p.x}" cy="${p.y}" r="${p.radius * 0.45}" fill="#9fd6f5"/>`;
+    for (const t of f.furniture) if (t.kind === 'Tree')
+      s += `<circle cx="${t.x}" cy="${t.y}" r="${t.size / 2}" fill="#2f6b38" fill-opacity="0.55" stroke="#1d4424" stroke-width="${u * 0.4}"/>`
+        + `<circle cx="${t.x}" cy="${t.y}" r="${Math.max(0.5, t.radius * 0.5)}" fill="#3b2a1a"/>`;
+    for (const b of f.furniture) if (b.kind === 'Bench') {
+      // Front (sin r, cos r) faces the room; the seat runs across it.
+      const fx = Math.sin(b.rotation), fy = Math.cos(b.rotation), half = b.radius, depth = 0.35;
+      const sx = -fy, sy = fx;
+      const corners = [[-half, -depth], [half, -depth], [half, depth], [-half, depth]]
+        .map(([a, d]) => ({ x: b.x + sx * a + fx * d, y: b.y + sy * a + fy * d }));
+      s += `<polygon points="${pts(corners)}" fill="#6b4a2b" stroke="#f0d9b5" stroke-width="${u * 0.4}"/>`
+        + `<line x1="${b.x}" y1="${b.y}" x2="${b.x + fx * 1.2}" y2="${b.y + fy * 1.2}" stroke="#f0d9b5" stroke-width="${u * 0.4}"/>`;
+    }
+    for (const l of f.furniture) if (l.kind === 'Lamp')
+      s += `<circle cx="${l.x}" cy="${l.y}" r="${Math.max(0.6, u * 1.6)}" fill="#ffd34d" stroke="#5a4500" stroke-width="${u * 0.4}"/>`;
+  }
   for (const e of c.entrances)
     s += `<circle cx="${e.x}" cy="${e.y}" r="${u * 3}" fill="#5cc9fa" stroke="#fff" stroke-width="${u * 0.6}"/>`;
   return s + '</g></svg>';
+}
+
+function furnitureSummary(f) {
+  const count = (kind) => f.furniture.filter((x) => x.kind === kind).length;
+  return `${count('Tree')} Bäume · ${count('Bench')} Bänke · ${count('Lamp')} Laternen`
+    + (f.centerpieces.length ? ' · Brunnen' : '')
+    + ` · ${f.walkable ? 'begehbar' : '<b style="color:#ff9b8a">blockiert</b>'}`
+    + (f.removed ? ` (${f.removed} entfernt)` : '') + ` · ${f.milliseconds.toFixed(1)} ms`;
 }
 
 function score(label, value) {
@@ -123,6 +156,7 @@ function render() {
       html += `<td><div class="card ${c.errors.length ? 'fail' : ''}">${svg(c)}
         <div class="meta"><b>${names[d.topology] || d.topology}</b> · <b>${names[d.grammar] || d.grammar}</b> · ${d.rooms.length} Räume<br>
         Platz ${(m.mainShare * 100).toFixed(0)} % · Räume ${(m.roomShare * 100).toFixed(0)} % · Grün ${(m.greenSurfaceRatio * 100).toFixed(0)} % · Krone ${(m.canopyCoverageRatio * 100).toFixed(0)} % · ${m.milliseconds.toFixed(0)} ms</div>
+        ${c.furnishing ? `<div class="meta">${furnitureSummary(c.furnishing)}</div>` : ''}
         <div class="scores">${score('H', sc.hierarchy)}${score('G', sc.green)}${score('K', sc.edges)}${score('S', sc.identity)}${score('E', sc.entrances)}</div>
         ${c.errors.map((e) => `<div class="err">${e}</div>`).join('')}</div></td>`;
     }
@@ -134,7 +168,7 @@ function render() {
 }
 
 fetch('/api/plaza-designs').then((r) => r.json()).then((json) => { data = json; render(); });
-for (const id of ['graph', 'surface', 'intent'])
+for (const id of ['graph', 'surface', 'intent', 'furnish'])
   document.getElementById(id).addEventListener('change', () => data && render());
 </script>
 </body></html>

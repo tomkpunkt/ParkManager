@@ -27,6 +27,12 @@ const treeColors = ['#226e34', '#468228', '#145a50', '#64781e'];
 const bushColors = ['#5ab45a', '#7ec85c', '#4ea078', '#9cb65a'];
 const plantColor = (item: { kind: string; species?: number }) =>
   (item.kind === 'Tree' ? treeColors : bushColors)[item.species ?? 0];
+type DesignPoint = { x: number; y: number };
+type PlazaDesignView = { style: string; mainPlaza: DesignPoint[];
+  secondarySpaces: DesignPoint[][]; greenZones: DesignPoint[][];
+  treeRows: { points: DesignPoint[] }[];
+  focalPoints: { x: number; y: number; kind: string }[] };
+const toSvg = (points: DesignPoint[]) => points.map((p) => `${p.x * 8},${p.y * 8}`).join(' ');
 type MapPoint = { x: number; y: number };
 /** Closest point on the closed outline, as the in-game entrance tool does. */
 const snapToOutline = (point: MapPoint, outline: MapPoint[]): MapPoint => {
@@ -84,6 +90,9 @@ function App() {
   const decorationPlanReady = useValue(decorationPlanReady$);
   const [report, setReport] = useState<BatchReport | null>(null);
   const [livePlan, setLivePlan] = useState<LivePlan | null>(null);
+  // Phase-1 plaza composer: optional live design for the drawn outline.
+  const [designStyle, setDesignStyle] = useState(-1);
+  const [design, setDesign] = useState<PlazaDesignView | null>(null);
   const [planError, setPlanError] = useState('');
   const [selected, setSelected] = useState(0);
   const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
@@ -132,6 +141,18 @@ function App() {
     if (get('SiteType') === 1 && get('PathPlanReady')) requestMockPlan();
     return () => window.removeEventListener('mock:recalculate', recalculate);
   }, [points, entrances]);
+  useEffect(() => {
+    if (designStyle < 0 || previewPoints.length < 3) { setDesign(null); return; }
+    const gates = entrances.length ? entrances : [{ x: 450, y: 180 }];
+    let cancelled = false;
+    fetch('/api/plaza-design', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon: previewPoints.map((p) => ({ x: p.x / 8, y: p.y / 8 })),
+        entrances: gates.map((p) => ({ x: p.x / 8, y: p.y / 8 })), plazaStyle: designStyle, seed: 7 }) })
+      .then((response) => response.json())
+      .then((result) => { if (!cancelled) setDesign(result as PlazaDesignView); })
+      .catch(() => { if (!cancelled) setDesign(null); });
+    return () => { cancelled = true; };
+  }, [designStyle, points, entrances, pointCount]);
   const current = report?.cases[selected];
   const scaleX = current ? 650 / current.width : 1;
   const scaleY = current ? 390 / current.height : 1;
@@ -194,6 +215,12 @@ function App() {
       }}>Meldungsschlüssel testen</button>
       <button onClick={() => set('Locale', get('Locale') === 'de' ? 'en' : 'de')}>
         Sprache wechseln</button>
+      <label>Plaza-Entwurf <select data-testid="design-style" value={designStyle}
+        onChange={(event) => setDesignStyle(Number(event.target.value))}>
+        {['aus', 'Auto', 'Klassisch', 'Modern', 'Promenade', 'Raumfolge'].map((name, i) =>
+          <option key={name} value={i - 1}>{name}</option>)}
+      </select></label>
+      <a className="mocklink" href="designs.html" target="_blank">Entwurfs-Galerie</a>
       <label>Batch-Bericht öffnen <input type="file" accept=".json" hidden
         onChange={(event) => loadReport(event.target.files?.[0])} /></label>
     </div>
@@ -211,6 +238,19 @@ function App() {
           <polygon points={previewPoints.map((p) => `${p.x},${p.y}`).join(' ')}
             style={livePlan && pathPlanReady && get('SiteType') !== 1
               ? { fill: '#78a05a', stroke: '#e6e6c8' } : undefined} />
+          {design ? <g data-testid="design-overlay">
+            {design.greenZones.map((zone, i) => <polygon key={`g${i}`} points={toSvg(zone)}
+              style={{ fill: '#6aa75a', stroke: '#4f8a43' }} />)}
+            {design.secondarySpaces.map((zone, i) => <polygon key={`s${i}`} points={toSvg(zone)}
+              style={{ fill: '#e2d5b5', stroke: '#fff6dc' }} />)}
+            {design.mainPlaza.length ? <polygon data-testid="design-main" points={toSvg(design.mainPlaza)}
+              style={{ fill: '#ece2c8', stroke: '#fff6dc', strokeWidth: 3 }} /> : null}
+            {design.treeRows.flatMap((row, r) => row.points.map((p, i) =>
+              <circle key={`t${r}-${i}`} cx={p.x * 8} cy={p.y * 8} r={9}
+                style={{ fill: '#2f6b38', stroke: '#1d4424' }} />))}
+            {design.focalPoints.map((f, i) => <circle key={`f${i}`} cx={f.x * 8} cy={f.y * 8}
+              r={f.kind === 'Primary' ? 9 : 6} style={{ fill: '#d9474b', stroke: 'white', strokeWidth: 2 }} />)}
+          </g> : null}
           {livePlan && decorationPlanReady && livePlan.lake && livePlan.lake.length > 2
             ? <polygon data-testid="live-lake"
                 style={{ fill: '#3f8ee0', stroke: '#1a55b8', strokeWidth: 3 }}

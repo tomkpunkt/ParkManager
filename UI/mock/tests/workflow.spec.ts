@@ -465,3 +465,20 @@ test('a built park is picked on the map and removed as a whole', async ({ page }
   await expect(page.getByTestId('remove-mode')).toBeVisible();
   await expect(mainAction(page)).toHaveAttribute('data-action', 'drawOutline');
 });
+
+test('the phase-1 plaza design overlays the drawn outline', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'outline', exact: true }).click();
+  await expect(page.getByTestId('design-overlay')).toHaveCount(0);
+  await page.getByTestId('design-style').selectOption({ label: 'Klassisch' });
+  await expect(page.getByTestId('design-main')).toBeVisible();
+  await page.getByTestId('design-style').selectOption({ label: 'aus' });
+  await expect(page.getByTestId('design-overlay')).toHaveCount(0);
+});
+
+test('the design gallery renders every case without rule violations', async ({ page }) => {
+  await page.goto('/designs.html');
+  await expect(page.locator('.card')).toHaveCount(100, { timeout: 30_000 });
+  await expect(page.locator('.card.fail')).toHaveCount(0);
+  await expect(page.locator('.err')).toHaveCount(0);
+});

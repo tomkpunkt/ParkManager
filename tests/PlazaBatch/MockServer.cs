@@ -36,6 +36,7 @@ internal static class MockServer
         public int FurnitureDensity { get; set; } = 100;
         public int EnabledMask { get; set; } = 0x2f;
         public bool LakeEnabled { get; set; } = true;
+        public int PlazaStyle { get; set; }
         public ArrangementDto[] Arrangement { get; set; } = Array.Empty<ArrangementDto>();
     }
     private sealed class PlazaVariantRequest
@@ -71,6 +72,21 @@ internal static class MockServer
                 request.Body, new JsonSerializerOptions {
                     PropertyNameCaseInsensitive = true });
             return Results.Json(PlazaVariant(input ?? new PlazaVariantRequest()));
+        });
+        // Phase-1 plaza composer: all test outlines in every style, and one
+        // live design for the outline drawn in the mock.
+        app.MapGet("/api/plaza-designs", () => Results.Json(PlazaDesignTests.Run(new List<string>())));
+        app.MapPost("/api/plaza-design", async (HttpRequest request) =>
+        {
+            var input = await JsonSerializer.DeserializeAsync<PlanRequest>(
+                request.Body, new JsonSerializerOptions {
+                    PropertyNameCaseInsensitive = true });
+            input ??= new PlanRequest();
+            var design = PlazaComposer.Compose(
+                input.Polygon.Select(p => new float2(p.X, p.Y)).ToList(),
+                input.Entrances.Select(p => new float2(p.X, p.Y)).ToList(),
+                (PlazaStyle)Math.Clamp(input.PlazaStyle, 0, 4), Math.Max(1, input.Seed));
+            return Results.Json(PlazaDesignJson.Describe(design));
         });
         Console.WriteLine($"ParkManager live mock: http://localhost:{port}/");
         await app.RunAsync();

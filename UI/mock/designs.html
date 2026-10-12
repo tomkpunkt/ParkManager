@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plaza-Entwürfe – Phase 1</title>
+<style>
+body{margin:0;background:#1b2622;color:#e9f1ec;font:13px/1.4 Arial,sans-serif}
+header{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:10px 16px;background:#0f1916;border-bottom:1px solid #35504a}
+header h1{margin:0;font-size:16px}
+.legend{display:flex;flex-wrap:wrap;gap:12px}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px}
+label{display:flex;align-items:center;gap:5px;cursor:pointer}
+table{border-collapse:collapse;margin:10px}
+th{position:sticky;top:46px;background:#1b2622;padding:6px;font-weight:bold;z-index:1}
+td{padding:6px;vertical-align:top}
+td.name{max-width:120px;font-weight:bold}
+.card{width:230px;background:#24332e;border:1px solid #3b5550;border-radius:6px;padding:6px}
+.card.fail{border-color:#e97868}
+.card svg{width:218px;height:218px;background:#203029;border-radius:4px}
+.meta{margin-top:4px;color:#b8cbc3;font-size:11px}
+.meta b{color:#fff}
+.err{color:#ff9b8a;font-size:11px}
+</style></head>
+<body>
+<header>
+  <h1>Plaza-Entwürfe · Phase 1</h1>
+  <div class="legend">
+    <span><i style="background:#cfc6b3"></i>befestigt</span>
+    <span><i style="background:#ece2c8;outline:2px solid #fff6dc"></i>Hauptplatz</span>
+    <span><i style="background:#e2d5b5"></i>Nebenraum</span>
+    <span><i style="background:#6aa75a"></i>Grünzone</span>
+    <span><i style="background:#2f6b38;border-radius:7px"></i>Baumreihe</span>
+    <span><i style="background:#e0893a"></i>Sitzzone</span>
+    <span><i style="background:#d9474b;border-radius:7px"></i>Fokuspunkt</span>
+    <span><i style="background:#4b8fd6"></i>Achse</span>
+    <span><i style="background:#8c5a2b"></i>Korridor</span>
+  </div>
+  <label><input type="checkbox" id="intent" checked>Gestaltungsabsicht</label>
+  <label><input type="checkbox" id="movement">Korridore & Achsen</label>
+  <span id="summary"></span>
+</header>
+<table id="grid"></table>
+<script>
+const styles = ['Auto', 'Classic', 'Modern', 'Promenade', 'Sequence'];
+const names = { Auto: 'Auto', Classic: 'Klassisch', Modern: 'Modern',
+  Promenade: 'Promenade', Sequence: 'Raumfolge' };
+const pts = (list) => list.map((p) => `${p.x},${p.y}`).join(' ');
+let data = null;
+
+function svg(c) {
+  const all = c.polygon;
+  const xs = all.map((p) => p.x), ys = all.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const size = Math.max(maxX - minX, maxY - minY) * 1.08;
+  const pad = size * 0.04;
+  const d = c.design;
+  const showIntent = document.getElementById('intent').checked;
+  const showMovement = document.getElementById('movement').checked;
+  // World y up: flip into SVG space.
+  const view = `${minX - pad} ${-(minY + size - pad)} ${size} ${size}`;
+  let s = `<svg viewBox="${view}"><g transform="scale(1,-1)">`;
+  s += `<polygon points="${pts(c.polygon)}" fill="#cfc6b3" stroke="#f4efe2" stroke-width="${size / 220}"/>`;
+  for (const z of d.greenZones) s += `<polygon points="${pts(z)}" fill="#6aa75a" stroke="#4f8a43" stroke-width="${size / 400}"/>`;
+  for (const z of d.secondarySpaces) s += `<polygon points="${pts(z)}" fill="#e2d5b5" stroke="#fff6dc" stroke-width="${size / 300}"/>`;
+  if (d.mainPlaza.length) s += `<polygon points="${pts(d.mainPlaza)}" fill="#ece2c8" stroke="#fff6dc" stroke-width="${size / 160}"/>`;
+  if (showIntent) {
+    for (const z of d.furnitureZones) if (z.kind === 'EdgeSeating')
+      s += `<polygon points="${pts(z.polygon)}" fill="#e0893a" fill-opacity="0.75"/>`;
+    for (const r of d.treeRows) for (const p of r.points)
+      s += `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(1.4, r.spacing * 0.32)}" fill="#2f6b38" stroke="#1d4424" stroke-width="${size / 500}"/>`;
+  }
+  if (showMovement) {
+    for (const k of d.corridors) if (k.points.length > 1)
+      s += `<polyline points="${pts(k.points)}" fill="none" stroke="#8c5a2b" stroke-opacity="0.55" stroke-linecap="round" stroke-width="${k.width}"/>`;
+    for (const a of d.axes)
+      s += `<line x1="${a.ax}" y1="${a.ay}" x2="${a.bx}" y2="${a.by}" stroke="#4b8fd6" stroke-width="${size / (a.primary ? 260 : 420)}" stroke-dasharray="${size / 60} ${size / 90}"/>`;
+  }
+  for (const f of d.focalPoints)
+    s += `<circle cx="${f.x}" cy="${f.y}" r="${f.kind === 'Primary' ? size / 45 : size / 70}" fill="#d9474b" stroke="#fff" stroke-width="${size / 400}"/>`;
+  for (const e of c.entrances)
+    s += `<circle cx="${e.x}" cy="${e.y}" r="${size / 70}" fill="#5cc9fa" stroke="#fff" stroke-width="${size / 400}"/>`;
+  return s + '</g></svg>';
+}
+
+function render() {
+  const rows = new Map();
+  for (const c of data.cases) {
+    if (!rows.has(c.name)) rows.set(c.name, {});
+    rows.get(c.name)[c.requested] = c;
+  }
+  let html = '<tr><th></th>' + styles.map((s) => `<th>${names[s]}</th>`).join('') + '</tr>';
+  for (const [name, byStyle] of rows) {
+    html += `<tr><td class="name">${name}</td>`;
+    for (const style of styles) {
+      const c = byStyle[style];
+      if (!c) { html += '<td></td>'; continue; }
+      const m = c.design.metrics;
+      const fell = c.requested !== 'Auto' && c.design.style !== c.requested;
+      html += `<td><div class="card ${c.errors.length ? 'fail' : ''}" data-case="${name}" data-style="${style}">${svg(c)}
+        <div class="meta"><b>${names[c.design.style] || c.design.style}</b>${fell ? ' (Ersatz)' : ''} · ${c.design.coreShape}<br>
+        Platz ${(m.mainShare * 100).toFixed(0)} % · Grün ${(m.greenShare * 100).toFixed(0)} % · Breite ${m.minimumWidth.toFixed(0)} m · ${m.milliseconds.toFixed(0)} ms</div>
+        ${c.errors.map((e) => `<div class="err">${e}</div>`).join('')}</div></td>`;
+    }
+    html += '</tr>';
+  }
+  document.getElementById('grid').innerHTML = html;
+  document.getElementById('summary').textContent =
+    `${data.count} Entwürfe · Ø ${data.averageMs.toFixed(0)} ms · max ${data.maximumMs.toFixed(0)} ms`;
+}
+
+fetch('/api/plaza-designs').then((r) => r.json()).then((json) => { data = json; render(); });
+for (const id of ['intent', 'movement'])
+  document.getElementById(id).addEventListener('change', () => data && render());
+</script>
+</body></html>

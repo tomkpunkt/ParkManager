@@ -447,6 +447,12 @@ if (treeAges[0] != 0 || treeAges[3] < totalTrees * 0.6f
 float ParkEdgeDistance(float2 p) => math.min(math.min(p.x, 220f - p.x),
     math.min(p.y, 160f - p.y));
 
+// Phase-1 plaza composer: spatial rules on characteristic outlines.
+var designs = PlazaDesignTests.Run(failures);
+Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+File.WriteAllText(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(output))!,
+    "plaza-designs.json"), JsonSerializer.Serialize(designs));
+
 var report = new { count, failed = failures.Count, failures, cases };
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
 File.WriteAllText(output, JsonSerializer.Serialize(report,

@@ -9,6 +9,8 @@
     <Compile Include="Program.cs" />
     <Compile Include="MockServer.cs" />
     <Compile Include="ModLogStub.cs" />
+    <Compile Include="PlazaDesignTests.cs" />
+    <Compile Include="PlazaDesignJson.cs" />
     <Compile Include="../../Geometry/PolygonMath.cs" Link="PolygonMath.cs" />
     <Compile Include="../../Geometry/Seeds.cs" Link="Seeds.cs" />
     <Compile Include="../../Geometry/PlazaPlan.cs" Link="PlazaPlan.cs" />
@@ -19,6 +21,13 @@
     <Compile Include="../../Geometry/ParkDecorationPlan.cs" Link="ParkDecorationPlan.cs" />
     <Compile Include="../../Geometry/ParkDecorationPlanner.cs" Link="ParkDecorationPlanner.cs" />
     <Compile Include="../../Geometry/ParkLakePlanner.cs" Link="ParkLakePlanner.cs" />
+    <Compile Include="../../Geometry/PlazaDesign.cs" Link="PlazaDesign.cs" />
+    <Compile Include="../../Geometry/PlazaGeometry.cs" Link="PlazaGeometry.cs" />
+    <Compile Include="../../Geometry/PlazaMovement.cs" Link="PlazaMovement.cs" />
+    <Compile Include="../../Geometry/PlazaShapes.cs" Link="PlazaShapes.cs" />
+    <Compile Include="../../Geometry/PlazaComposer.cs" Link="PlazaComposer.cs" />
+    <Compile Include="../../Geometry/PlazaComposer.Spaces.cs" Link="PlazaComposer.Spaces.cs" />
+    <Compile Include="../../Geometry/PlazaComposer.Green.cs" Link="PlazaComposer.Green.cs" />
     <PackageReference Include="UnityMathematics.NoDeps" Version="1.3.2" />
   </ItemGroup>
 </Project>

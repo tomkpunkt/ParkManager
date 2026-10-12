@@ -171,6 +171,7 @@ namespace ParkManager.Tools
                 _expectedPathAreas = 0;
                 _expectedParkSurfaceAreas = 1;
                 _pathBuildStartedFrame = UnityEngine.Time.frameCount;
+                ResetBuildValidation();
                 _pathBuildPhase = PathBuildPhase.WaitingForMaterialization;
                 PublishState(UiText.Of("status.plazaBuildStarted",
                     _expectedAccessMarkers));
@@ -264,6 +265,8 @@ namespace ParkManager.Tools
                     if (area >= 1 && markers >= _expectedAccessMarkers
                         && surface != Entity.Null)
                     {
+                        // Give the game time to validate before applying.
+                        if (!ValidatedForApply()) return true;
                         var nextId = 1;
                         var attachedArea = TagPlazaTempEntities(_tempAreaQuery,
                             _plazaNavigationPrefab,
@@ -291,10 +294,12 @@ namespace ParkManager.Tools
                         PublishPathBuildState(UiText.Of("path.plazaApplying"));
                         return true;
                     }
+                    CollectGameErrors();
                     if (UnityEngine.Time.frameCount - _pathBuildStartedFrame
                         <= MaterializationTimeoutFrames) return true;
-                    AbortPathBuild(UiText.Of("path.plazaEntitiesMissing", area, markers,
-                        _expectedAccessMarkers, surface == Entity.Null ? 0 : 1));
+                    AbortPathBuild(GameErrorOr(UiText.Of("path.plazaEntitiesMissing",
+                        area, markers, _expectedAccessMarkers,
+                        surface == Entity.Null ? 0 : 1)));
                     return true;
                 case PathBuildPhase.ApplyRequested:
                     applyMode = ApplyMode.None;
@@ -311,8 +316,8 @@ namespace ParkManager.Tools
                     }
                     if (UnityEngine.Time.frameCount - _pathApplyFrame
                         <= MaterializationTimeoutFrames) return true;
-                    AbortPathBuild(UiText.Of("path.plazaIncomplete", areas, accesses,
-                        _expectedAccessMarkers, surfaces));
+                    AbortPathBuild(GameErrorOr(UiText.Of("path.plazaIncomplete",
+                        areas, accesses, _expectedAccessMarkers, surfaces)));
                     return true;
                 case PathBuildPhase.ClearRequested:
                     applyMode = ApplyMode.Clear;

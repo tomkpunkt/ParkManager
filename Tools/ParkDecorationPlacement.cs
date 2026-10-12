@@ -396,6 +396,7 @@ namespace ParkManager.Tools
                 }
 
                 _decorationStartedFrame = UnityEngine.Time.frameCount;
+                ResetBuildValidation();
                 _decorationBuildPhase = DecorationBuildPhase.WaitingForMaterialization;
                 preparationTimer.Stop();
                 Mod.Log.Info("ParkManager decoration palette: "
@@ -421,6 +422,7 @@ namespace ParkManager.Tools
                     return false;
                 case DecorationBuildPhase.WaitingForMaterialization:
                     applyMode = ApplyMode.None;
+                    CollectGameErrors();
                     var temporaryTimer = System.Diagnostics.Stopwatch.StartNew();
                     var taggedObjects = TagMaterializedObjects();
                     var fenceReady = _pendingFencePrefab == Entity.Null
@@ -442,7 +444,7 @@ namespace ParkManager.Tools
                     }
                     if (UnityEngine.Time.frameCount - _decorationStartedFrame
                         <= MaterializationTimeoutFrames) return true;
-                    AbortDecorationBuild(UiText.Of("decoration.timeout"));
+                    AbortDecorationBuild(GameErrorOr(UiText.Of("decoration.timeout")));
                     return true;
                 case DecorationBuildPhase.ApplyRequested:
                     applyMode = ApplyMode.None;
@@ -460,10 +462,10 @@ namespace ParkManager.Tools
                     {
                         if (UnityEngine.Time.frameCount - _decorationApplyFrame
                             <= MaterializationTimeoutFrames) return true;
-                        AbortDecorationBuild(UiText.Of("decoration.incomplete",
-                            permanentObjects, _pendingDecorations.Count,
-                            permanentFenceEdges, _expectedFenceCourses,
-                            permanentFenceNodes));
+                        AbortDecorationBuild(GameErrorOr(UiText.Of(
+                            "decoration.incomplete", permanentObjects,
+                            _pendingDecorations.Count, permanentFenceEdges,
+                            _expectedFenceCourses, permanentFenceNodes)));
                         return true;
                     }
                     Mod.Log.Info("ParkManager rediscovered permanent decoration: "

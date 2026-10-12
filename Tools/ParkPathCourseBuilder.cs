@@ -19,6 +19,14 @@ namespace ParkManager.Tools
     {
         private const float MaximumCourseFitError = 1.5f;
         private const int MaximumCourseFitDepth = 8;
+        // A course only knows the terrain height at its ends and the plan's
+        // vertices. On hills its curve could run metres above or below the
+        // ground, and CS2 then carves or fills the terrain along it.
+        private const float MaximumTerrainDeviation = 0.6f;
+        // Shorter courses are not split further: tiny segments are rejected
+        // by the game ("too short") and add visible node meshes.
+        private const float MinimumTerrainSplitLength = 16f;
+        private int _terrainSplits;
 
         private sealed class MaterializedPathCourse
         {
@@ -34,6 +42,7 @@ namespace ParkManager.Tools
             var result = new List<MaterializedPathCourse>();
             var chains = ExtractPathChains();
             chainCount = chains.Count;
+            _terrainSplits = 0;
             for (var chainIndex = 0; chainIndex < chains.Count; chainIndex++)
             {
                 var chain = chains[chainIndex];
@@ -52,11 +61,12 @@ namespace ParkManager.Tools
                 if (chain[0] == chain[chain.Count - 1] && chain.Count > 3)
                 {
                     var split = chain.Count / 2;
-                    AddFittedPathCourses(points.GetRange(0, split + 1), result, 0);
+                    AddFittedPathCourses(points.GetRange(0, split + 1), result, 0,
+                        ref heightData);
                     AddFittedPathCourses(points.GetRange(split,
-                        points.Count - split), result, 0);
+                        points.Count - split), result, 0, ref heightData);
                 }
-                else AddFittedPathCourses(points, result, 0);
+                else AddFittedPathCourses(points, result, 0, ref heightData);
             }
             return result;
         }
@@ -187,31 +197,95 @@ namespace ParkManager.Tools
         }
 
         private void AddFittedPathCourses(List<float3> points,
-            ICollection<MaterializedPathCourse> output, int depth)
+            ICollection<MaterializedPathCourse> output, int depth,
+            ref TerrainHeightData heightData)
         {
             if (points.Count < 2) return;
             var curve = FitPathCourse(points);
             var splitIndex = FindWorstFitPoint(points, curve, out var maximumError);
-            if (points.Count <= 2
-                || depth >= MaximumCourseFitDepth
-                || maximumError <= MaximumCourseFitError
-                    && CurveStaysInsidePark(curve))
+            var length = ApproximateCurveLength(curve);
+            var fitsPlan = points.Count <= 2
+                || maximumError <= MaximumCourseFitError && CurveStaysInsidePark(curve);
+            var worstTerrainT = 0.5f;
+            var followsTerrain = length < MinimumTerrainSplitLength
+                || TerrainDeviation(curve, ref heightData, out worstTerrainT)
+                    <= MaximumTerrainDeviation;
+            if (depth >= MaximumCourseFitDepth || fitsPlan && followsTerrain)
             {
                 output.Add(new MaterializedPathCourse
                 {
                     Curve = curve,
-                    Length = ApproximateCurveLength(curve),
+                    Length = length,
                     SourcePointCount = points.Count,
                 });
+                return;
+            }
+
+            if (fitsPlan)
+            {
+                // The shape is right but the curve leaves the ground: add a
+                // node at terrain height where it deviates most.
+                _terrainSplits++;
+                SplitAtTerrainPoint(points, MathUtils.Position(curve, worstTerrainT),
+                    ref heightData, out var left, out var right);
+                AddFittedPathCourses(left, output, depth + 1, ref heightData);
+                AddFittedPathCourses(right, output, depth + 1, ref heightData);
                 return;
             }
 
             if (splitIndex <= 0 || splitIndex >= points.Count - 1)
                 splitIndex = points.Count / 2;
             AddFittedPathCourses(points.GetRange(0, splitIndex + 1),
-                output, depth + 1);
+                output, depth + 1, ref heightData);
             AddFittedPathCourses(points.GetRange(splitIndex,
-                points.Count - splitIndex), output, depth + 1);
+                points.Count - splitIndex), output, depth + 1, ref heightData);
+        }
+
+        /// <summary>Largest vertical gap between the curve and the terrain.</summary>
+        private static float TerrainDeviation(Bezier4x3 curve,
+            ref TerrainHeightData heightData, out float worstT)
+        {
+            worstT = 0.5f;
+            var worst = 0f;
+            for (var sample = 1; sample < 16; sample++)
+            {
+                var t = sample / 16f;
+                var point = MathUtils.Position(curve, t);
+                var ground = TerrainUtils.SampleHeight(ref heightData, point);
+                if (!math.isfinite(ground)) continue;
+                var deviation = math.abs(point.y - ground);
+                if (deviation <= worst) continue;
+                worst = deviation;
+                worstT = t;
+            }
+            return worst;
+        }
+
+        /// <summary>
+        /// Splits the polyline at a new vertex on the ground below
+        /// <paramref name="curvePoint"/>, inserted into the closest segment.
+        /// </summary>
+        private static void SplitAtTerrainPoint(List<float3> points, float3 curvePoint,
+            ref TerrainHeightData heightData, out List<float3> left,
+            out List<float3> right)
+        {
+            var segment = 0;
+            var best = float.MaxValue;
+            for (var i = 0; i + 1 < points.Count; i++)
+            {
+                var distance = PolygonMath.DistanceToSegmentSquared(curvePoint.xz,
+                    points[i].xz, points[i + 1].xz);
+                if (distance >= best) continue;
+                best = distance;
+                segment = i;
+            }
+            var ground = TerrainUtils.SampleHeight(ref heightData, curvePoint);
+            var vertex = new float3(curvePoint.x,
+                math.isfinite(ground) ? ground : curvePoint.y, curvePoint.z);
+            left = points.GetRange(0, segment + 1);
+            left.Add(vertex);
+            right = new List<float3> { vertex };
+            right.AddRange(points.GetRange(segment + 1, points.Count - segment - 1));
         }
 
         private static Bezier4x3 FitPathCourse(IReadOnlyList<float3> points)
@@ -296,7 +370,8 @@ namespace ParkManager.Tools
                 + $"removedIntermediateNodes="
                 + $"{Math.Max(0, (_pathPlan?.Edges.Count ?? 0) - courses.Count)} "
                 + $"maxSourcePoints={maximumSourcePoints} "
-                + $"fitTolerance={MaximumCourseFitError:F2}m.");
+                + $"fitTolerance={MaximumCourseFitError:F2}m "
+                + $"terrainSplits={_terrainSplits}.");
         }
     }
 }

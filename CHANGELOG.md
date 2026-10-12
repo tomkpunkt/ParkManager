@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Explain builds the game rejects (Reddit: "preview works, but something blocks the placement"): ParkManager now reads the game's own validation of the temporary build (error icons with their type, e.g. outside the city limits, overlapping, too steep, not enough money). If the build fails, the message names the game's reason and position instead of a bare timeout, the spot is marked on the map, and the log records it. Mods such as Anarchy hide these errors, which is why the problem only appeared for some players. The game also gets three frames to validate before the build is applied.
+- Paths follow the terrain (Reddit: "cuts through the terrain"): a path course between two junctions used to be one curve that only touched the ground at the plan's vertices, so on hills it ran above or below the terrain and the game carved or filled the ground along it. Courses longer than 16 m that deviate more than 0.6 m from the terrain are now split at the worst point with a new node at ground level.
+
 ## 0.7.4 – rc.1
 
 - Show all ground surfaces (#2): the surface picker now offers up to 600 entries instead of 120, so texture packs no longer push surfaces off the list, and surfaces are recognised by their area type alone (asset-pack surfaces do not always carry the Vanilla `SurfaceData` component). Every scan logs the surfaces it found, so missing surfaces can be traced from `ParkManager.Mod.log`.

@@ -82,6 +82,7 @@ namespace ParkManager.Tools
                 ComponentType.ReadOnly<AreaGeometryData>(),
                 ComponentType.Exclude<PlaceholderObjectElement>());
             InitializePlazaAccessPlacement();
+            InitializeBuildValidation();
             _tempPathQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[]
@@ -242,6 +243,7 @@ namespace ParkManager.Tools
                 LogMaterializedCourseDiagnostics(courses, chainCount);
 
                 _pathBuildStartedFrame = UnityEngine.Time.frameCount;
+                ResetBuildValidation();
                 _pathBuildPhase = PathBuildPhase.WaitingForMaterialization;
                 PublishState(UiText.Of("status.pathBuildStarted", _expectedPathCourses));
                 PublishPathBuildState(_usesSurfaceFallback
@@ -331,6 +333,8 @@ namespace ParkManager.Tools
                         && parkSurface != Entity.Null
                         && accessMarkers >= _expectedAccessMarkers)
                     {
+                        // Give the game time to validate before applying.
+                        if (!ValidatedForApply()) return true;
                         var nextElementId = 1;
                         var attachedPaths = TagEditableTempEntities(_tempPathQuery,
                             _pedestrianPathPrefab, _pendingBuildRecord,
@@ -370,9 +374,10 @@ namespace ParkManager.Tools
                         PublishPathBuildState(UiText.Of("path.applying"));
                         return true;
                     }
+                    CollectGameErrors();
                     if (UnityEngine.Time.frameCount - _pathBuildStartedFrame
                         <= MaterializationTimeoutFrames) return true;
-                    AbortPathBuild(UiText.Of("path.timeout"));
+                    AbortPathBuild(GameErrorOr(UiText.Of("path.timeout")));
                     return true;
                 case PathBuildPhase.ApplyRequested:
                     applyMode = ApplyMode.None;
@@ -390,6 +395,11 @@ namespace ParkManager.Tools
                     {
                         if (UnityEngine.Time.frameCount - _pathApplyFrame
                             <= MaterializationTimeoutFrames) return true;
+                        if (_gameErrorSeen)
+                        {
+                            AbortPathBuild(DescribeGameError());
+                            return true;
+                        }
                         AbortPathBuild(UiText.Of("path.incomplete", permanentEdges,
                             _expectedPathCourses, permanentNodes, permanentAreas,
                             _expectedPathAreas, permanentParkSurfaces,

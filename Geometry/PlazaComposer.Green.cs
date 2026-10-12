@@ -5,15 +5,284 @@ namespace ParkManager.Geometry
 {
     internal static partial class PlazaComposer
     {
-        /// <summary>
-        /// Green zones are what remains once the spaces, a paved gap around
-        /// them, the corridors and the entrances are kept free. The grid only
-        /// decides which areas qualify; their outlines are traced, simplified
-        /// and checked for valid topology.
-        /// </summary>
-        private static void BuildGreenZones(PlazaDesign design, PlazaGeometry geometry,
-            StyleRules rules, List<PlazaShape> spaces, List<List<float2>> outlines)
+        /// <summary>Green share of the plot already placed, against the grammar's target.</summary>
+        private sealed class GreenBudget
         {
+            internal float Used;
+            internal float Minimum;
+            internal float Maximum;
+            internal float Left => Maximum - Used;
+        }
+
+        /// <summary>
+        /// Green is designed, not left over: beds along the edges chosen for
+        /// green, formal structure inside large squares, and organic gardens
+        /// for the natural grammar, all within the grammar's green budget.
+        /// Everything else stays paved.
+        /// </summary>
+        private static void ComposeGreen(Context context)
+        {
+            var design = context.Design;
+            var geometry = context.Geometry;
+            var budget = new GreenBudget
+            {
+                Minimum = geometry.Area * context.Rules.GreenMinimum,
+                Maximum = geometry.Area * context.Rules.GreenMaximum,
+            };
+            var natural = design.Grammar == PlazaGrammar.Natural;
+            var order = new List<int>();
+            for (var r = 0; r < design.Rooms.Count; r++)
+                if (design.Rooms[r].Role != PlazaRoomRole.Passage) order.Add(r);
+            order.Sort((a, b) => design.Rooms[b].Importance.CompareTo(design.Rooms[a].Importance));
+
+            if (natural) AddGardens(context, budget);
+            else
+                foreach (var r in order)
+                foreach (var edge in design.Rooms[r].Edges)
+                    if (edge.Role == PlazaEdgeRole.GreenBorder)
+                        AddEdgeBeds(context, r, edge, budget, context.Rules.BedDepth);
+
+            AddInnerBeds(context, budget);
+
+            // Below the target: lawns behind the tree rows first, then behind
+            // seating and built edges. Open edges always stay paved.
+            foreach (var role in new[] { PlazaEdgeRole.TreeRow, PlazaEdgeRole.SeatingEdge,
+                         PlazaEdgeRole.ArchitecturalEdge })
+            {
+                if (natural || budget.Used >= budget.Minimum) break;
+                foreach (var r in order)
+                foreach (var edge in design.Rooms[r].Edges)
+                    if (edge.Role == role && edge.Rim >= 6f && budget.Used < budget.Minimum)
+                        AddEdgeBeds(context, r, edge, budget, context.Rules.BedDepth);
+            }
+
+            // Still short: deliberate green in the large paved remainders.
+            if (budget.Used < budget.Minimum) FillLeftovers(context, budget);
+        }
+
+        /// <summary>
+        /// A bed parallel to a room edge, a paved walk away from it, split
+        /// wherever a corridor or an entrance crosses the rim.
+        /// </summary>
+        private static void AddEdgeBeds(Context context, int roomIndex, PlazaRoomEdge edge,
+            GreenBudget budget, float maximumDepth)
+        {
+            if (budget.Left < 15f) return;
+            var room = context.Design.Rooms[roomIndex];
+            var outward = edge.Outward;
+            var tangent = new float2(-outward.y, outward.x);
+            var center = room.Center;
+            float tMin = float.MaxValue, tMax = float.MinValue, oMax = float.MinValue;
+            foreach (var point in edge.Points)
+            {
+                var d = point - center;
+                tMin = math.min(tMin, math.dot(d, tangent));
+                tMax = math.max(tMax, math.dot(d, tangent));
+                oMax = math.max(oMax, math.dot(d, outward));
+            }
+            var depth = math.min(maximumDepth, edge.Rim - GreenGap - 1f);
+            if (depth < 2.5f) return;
+            var start = oMax + GreenGap;
+            var modern = context.Design.Grammar == PlazaGrammar.Modern;
+            var length = tMax - tMin;
+            var half = length * (modern ? 0.46f : 0.41f);
+            var random = new Unity.Mathematics.Random(Seeds.Mix(context.Seed,
+                0x9b05688cu ^ (uint)(roomIndex * 7 + (int)(math.atan2(outward.y, outward.x) * 10f))));
+            var middle = (tMin + tMax) * 0.5f
+                + (modern ? (random.NextBool() ? 1f : -1f) * length * 0.05f : 0f);
+            var shear = modern ? 0.6f : 0f;
+
+            float2 At(float t, float o) => center + tangent * (t + shear * (o - start))
+                + outward * o;
+
+            // Shrink until the bed lies inside the plot.
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var inside = true;
+                foreach (var t in new[] { middle - half, middle, middle + half })
+                foreach (var o in new[] { start, start + depth })
+                {
+                    var point = At(t, o);
+                    if (context.Geometry.Contains(point)
+                        && context.Geometry.DistanceToBoundary(point) >= 0.8f) continue;
+                    inside = false;
+                }
+                if (inside) break;
+                if (attempt % 2 == 0) depth *= 0.85f;
+                else half *= 0.88f;
+            }
+            if (depth < 2.5f) return;
+
+            // Free stretches along the edge become separate beds.
+            const float step = 1f;
+            var steps = (int)math.floor(half * 2f / step);
+            var runStart = float.NaN;
+            // One extra step past the end closes the last free stretch.
+            for (var i = 0; i <= steps + 1; i++)
+            {
+                var t = middle - half + i * step;
+                var free = i <= steps;
+                for (var k = 0; k <= 2 && free; k++)
+                    free = BedPointFree(context, At(t, start + depth * k / 2f));
+                if (free && float.IsNaN(runStart)) runStart = t;
+                if (free || float.IsNaN(runStart)) continue;
+                var runEnd = t - step;
+                AddBed(context, roomIndex, budget, At, runStart, runEnd, start, depth,
+                    PlazaGreenKind.Border);
+                runStart = float.NaN;
+            }
+        }
+
+        private static void AddBed(Context context, int roomIndex, GreenBudget budget,
+            System.Func<float, float, float2> at, float t0, float t1, float o0, float depth,
+            PlazaGreenKind kind)
+        {
+            if (t1 - t0 < 4f || budget.Left < 15f) return;
+            // Respect the budget by shortening the bed.
+            var area = (t1 - t0) * depth;
+            if (area > budget.Left)
+            {
+                var shorter = budget.Left / depth;
+                if (shorter < 4f) return;
+                var cut = (t1 - t0 - shorter) * 0.5f;
+                t0 += cut;
+                t1 -= cut;
+            }
+            var zone = new PlazaGreenZone { Kind = kind, Room = roomIndex };
+            zone.Polygon.Add(at(t0, o0));
+            zone.Polygon.Add(at(t1, o0));
+            zone.Polygon.Add(at(t1, o0 + depth));
+            zone.Polygon.Add(at(t0, o0 + depth));
+            if (PolygonMath.SignedArea(zone.Polygon) < 0.0) zone.Polygon.Reverse();
+            if (!KeepsClear(context, zone.Polygon, kind != PlazaGreenKind.Border)) return;
+            context.Design.GreenZones.Add(zone);
+            budget.Used += PlazaShape.Area(zone.Polygon);
+        }
+
+        private static bool BedPointFree(Context context, float2 point)
+            => context.Geometry.Contains(point)
+                && context.Geometry.DistanceToBoundary(point) >= 0.8f
+                && !InsideAnyRoom(context, point, GreenGap * 0.9f)
+                && !NearCorridor(context, point, 1f)
+                && !NearEntrance(context, point, EntranceClearance)
+                && !InGreen(context, point);
+
+        /// <summary>
+        /// Large squares get structure inside: formal lawn panels flanking a
+        /// free central band (classic), one long planting island (modern) or
+        /// an organic garden (natural). The open square stays connected.
+        /// </summary>
+        private static void AddInnerBeds(Context context, GreenBudget budget)
+        {
+            var design = context.Design;
+            if (design.Rooms.Count == 0 || budget.Left < 30f) return;
+            var main = design.Rooms[0];
+            var kind = main.Shape.Kind;
+            if (kind != PlazaCoreShape.Rectangle && kind != PlazaCoreShape.ChamferedRectangle
+                && kind != PlazaCoreShape.Parallelogram && kind != PlazaCoreShape.Ellipse)
+                return;
+            var length = main.Shape.HalfLength;
+            var width = main.Shape.HalfWidth;
+            if (PlazaShape.Area(main.Boundary) < 1600f || width * 2f < 34f) return;
+            var u = main.Axis;
+            var v = new float2(-u.y, u.x);
+            var c = main.Center;
+            var random = new Unity.Mathematics.Random(Seeds.Mix(context.Seed, 0x1f83d9abu));
+
+            switch (design.Grammar)
+            {
+                case PlazaGrammar.Classic:
+                {
+                    var panels = length >= 35f ? 2 : 1;
+                    var gap = length * 0.14f;
+                    var panelLength = (length * 1.2f - gap * (panels - 1)) / panels;
+                    for (var side = -1; side <= 1; side += 2)
+                    for (var p = 0; p < panels; p++)
+                    {
+                        var t0 = -length * 0.6f + p * (panelLength + gap);
+                        AddInnerQuad(context, budget, c, u, v, t0, t0 + panelLength,
+                            side * width * 0.38f, side * width * 0.68f, 0f,
+                            PlazaGreenKind.Parterre);
+                    }
+                    break;
+                }
+                case PlazaGrammar.Modern:
+                {
+                    var side = random.NextBool() ? 1f : -1f;
+                    var shift = (random.NextBool() ? 1f : -1f) * length * 0.12f;
+                    var islandWidth = math.clamp(width * 0.16f, 3f, 8f);
+                    var offset = side * width * 0.42f;
+                    AddInnerQuad(context, budget, c, u, v, shift - length * 0.55f,
+                        shift + length * 0.55f, offset - islandWidth * 0.5f,
+                        offset + islandWidth * 0.5f, 0.5f, PlazaGreenKind.Island);
+                    break;
+                }
+                default:
+                {
+                    var su = random.NextBool() ? 1f : -1f;
+                    var sv = random.NextBool() ? 1f : -1f;
+                    var centre = c + u * (length * 0.42f * su) + v * (width * 0.32f * sv);
+                    var garden = new List<float2>();
+                    for (var i = 0; i < 12; i++)
+                    {
+                        var angle = 2f * math.PI * i / 12f;
+                        var wobble = 1f + 0.12f * math.sin(angle * 3f + su);
+                        garden.Add(centre + u * (math.cos(angle) * length * 0.26f * wobble)
+                            + v * (math.sin(angle) * width * 0.22f * wobble));
+                    }
+                    AddInnerPolygon(context, budget, Chaikin(garden), PlazaGreenKind.Garden);
+                    break;
+                }
+            }
+        }
+
+        private static void AddInnerQuad(Context context, GreenBudget budget, float2 c,
+            float2 u, float2 v, float t0, float t1, float s0, float s1, float shear,
+            PlazaGreenKind kind)
+        {
+            var depth = math.abs(s1 - s0);
+            float2 At(float t, float s) => c + u * (t + shear * (s - s0)) + v * s;
+            var quad = new List<float2> { At(t0, s0), At(t1, s0), At(t1, s1), At(t0, s1) };
+            if (PolygonMath.SignedArea(quad) < 0.0) quad.Reverse();
+            if (PlazaShape.Area(quad) > budget.Left)
+            {
+                var keep = budget.Left / math.max(1f, depth);
+                if (keep < 6f) return;
+                var cut = (t1 - t0 - keep) * 0.5f;
+                quad = new List<float2> { At(t0 + cut, s0), At(t1 - cut, s0),
+                    At(t1 - cut, s1), At(t0 + cut, s1) };
+                if (PolygonMath.SignedArea(quad) < 0.0) quad.Reverse();
+            }
+            AddInnerPolygon(context, budget, quad, kind);
+        }
+
+        /// <summary>Adds a bed inside the main square, well clear of its edge.</summary>
+        private static void AddInnerPolygon(Context context, GreenBudget budget,
+            List<float2> polygon, PlazaGreenKind kind)
+        {
+            var main = context.Design.Rooms[0];
+            foreach (var point in PlazaShape.Densify(polygon, 1f))
+            {
+                if (!main.Shape.Contains(point, main.Boundary)
+                    || DistanceToOutline(point, main.Boundary) < 2.5f
+                    || NearCorridor(context, point, 4f)) return;
+            }
+            var area = PlazaShape.Area(polygon);
+            if (area > budget.Left || !IsSimple(polygon)) return;
+            var zone = new PlazaGreenZone { Kind = kind, Room = 0 };
+            zone.Polygon.AddRange(polygon);
+            context.Design.GreenZones.Add(zone);
+            budget.Used += area;
+        }
+
+        /// <summary>
+        /// Natural grammar: organic gardens behind the green edges, traced
+        /// from the grid, smoothed and checked like every other bed.
+        /// </summary>
+        private static void AddGardens(Context context, GreenBudget budget)
+        {
+            var geometry = context.Geometry;
+            var design = context.Design;
             var columns = geometry.Columns;
             var rows = geometry.Rows;
             var green = new bool[columns * rows];
@@ -21,103 +290,264 @@ namespace ParkManager.Geometry
             {
                 if (!geometry.Inside[index]) continue;
                 var point = geometry.CellCenter(index);
-                if (InsideAny(point, spaces, outlines, GreenGap)) continue;
-                if (NearAnyCorridor(design, point, 0.75f)) continue;
-                if (NearEntrance(design, geometry, point)) continue;
-                green[index] = true;
+                if (InsideAnyRoom(context, point, GreenGap + 0.5f)
+                    || NearCorridor(context, point, 1f)
+                    || NearEntrance(context, point, EntranceClearance)
+                    || geometry.Distance[index] < 0.8f) continue;
+                green[index] = NearestEdgeRole(context, point) == PlazaEdgeRole.GreenBorder;
             }
-
-            // Opening removes slivers thinner than two cells.
-            var minimumCells = (int)math.ceil(2f / geometry.CellSize);
-            green = Dilate(Erode(green, columns, rows, minimumCells), columns, rows,
-                minimumCells);
-            for (var index = 0; index < green.Length; index++)
-                green[index] &= geometry.Inside[index];
+            var radius = (int)math.ceil(2f / geometry.CellSize);
+            green = Dilate(Erode(green, columns, rows, radius), columns, rows, radius);
+            for (var index = 0; index < green.Length; index++) green[index] &= geometry.Inside[index];
             OpenEnclosedHoles(green, columns, rows);
 
-            var minimumArea = math.max(MinimumGreenArea, geometry.Area * 0.02f);
+            var loops = new List<List<float2>>();
             foreach (var loop in TraceContours(green, columns, rows))
             {
                 var world = new List<float2>(loop.Count);
-                for (var i = 0; i < loop.Count; i++)
-                    world.Add(geometry.Origin + ((float2)loop[i] * 0.5f + 0.5f)
-                        * geometry.CellSize);
-                if (PolygonMath.SignedArea(world) <= 0.0) continue;
+                foreach (var p in loop)
+                    world.Add(geometry.Origin + ((float2)p * 0.5f + 0.5f) * geometry.CellSize);
+                if (PolygonMath.SignedArea(world) > 0.0 && PlazaShape.Area(world) >= 30f)
+                    loops.Add(world);
+            }
+            loops.Sort((a, b) => PlazaShape.Area(b).CompareTo(PlazaShape.Area(a)));
+            foreach (var world in loops)
+            {
                 var rawArea = PlazaShape.Area(world);
-                if (rawArea < minimumArea) continue;
-                // From smoothest to raw: simplification and smoothing may cut
-                // corners, so every option must still keep the spaces free.
+                if (rawArea > budget.Left) continue;
                 var simplified = Simplify(world, math.max(0.4f, geometry.CellSize * 0.6f));
-                var options = new List<List<float2>>();
-                if (rules.OrganicGreen) options.Add(Chaikin(simplified));
-                options.Add(simplified);
-                options.Add(world);
-                List<float2> accepted = null;
-                for (var i = 0; i < options.Count && accepted == null; i++)
+                var options = new List<List<float2>> { Chaikin(Chaikin(simplified)),
+                    Chaikin(simplified), simplified, world };
+                foreach (var option in options)
                 {
-                    var snapped = SnapToBoundary(geometry, options[i],
-                        geometry.CellSize * 0.9f);
-                    foreach (var candidate in new[] { snapped, options[i] })
+                    var snapped = SnapToBoundary(geometry, option, geometry.CellSize * 0.9f);
+                    var accepted = false;
+                    foreach (var candidate in new[] { snapped, option })
                     {
                         if (!IsSimple(candidate)
-                            || PlazaShape.Area(candidate) < rawArea * 0.85f
-                            || !KeepsClear(design, candidate, spaces, outlines)) continue;
-                        accepted = candidate;
+                            || PlazaShape.Area(candidate) < rawArea * 0.8f
+                            || !KeepsClear(context, candidate, false)) continue;
+                        var zone = new PlazaGreenZone
+                        {
+                            Kind = PlazaGreenKind.Garden,
+                            Room = NearestRoom(context, AreaCentre(candidate)),
+                        };
+                        zone.Polygon.AddRange(candidate);
+                        design.GreenZones.Add(zone);
+                        budget.Used += PlazaShape.Area(candidate);
+                        accepted = true;
                         break;
                     }
+                    if (accepted) break;
                 }
-                if (accepted != null) design.GreenZones.Add(accepted);
             }
         }
 
         /// <summary>
-        /// A green zone may not reach into a space or across a corridor.
+        /// Large paved remainders far from every room read as unplanned. Below
+        /// the green target, each becomes one deliberately shaped green area:
+        /// a lawn panel (classic), a sheared bed (modern) or a garden
+        /// (natural), fitted into the free space like a room.
         /// </summary>
-        private static bool KeepsClear(PlazaDesign design, List<float2> zone,
-            List<PlazaShape> spaces, List<List<float2>> outlines)
+        private static void FillLeftovers(Context context, GreenBudget budget)
         {
-            for (var i = 0; i < zone.Count; i++)
-                if (InsideAny(zone[i], spaces, outlines, 0f)) return false;
-            for (var s = 0; s < outlines.Count; s++)
-                foreach (var point in PlazaShape.Densify(outlines[s], 1f))
-                    if (PolygonMath.PointInside(point, zone)) return false;
-            for (var c = 0; c < design.MovementCorridors.Count; c++)
+            var geometry = context.Geometry;
+            var free = new bool[geometry.Inside.Length];
+            for (var index = 0; index < free.Length; index++)
             {
-                var points = design.MovementCorridors[c].Points;
+                if (!geometry.Inside[index] || geometry.Distance[index] < 1f) continue;
+                var point = geometry.CellCenter(index);
+                free[index] = !InsideAnyRoom(context, point, GreenGap + 1f)
+                    && !NearCorridor(context, point, 1.5f)
+                    && !NearEntrance(context, point, EntranceClearance + 1f)
+                    && !NearGreen(context, point, 1.5f);
+            }
+            bool FreeAt(float2 point)
+                => geometry.TryCell(point, out var cell) && free[cell];
+
+            var cellArea = geometry.CellSize * geometry.CellSize;
+            foreach (var component in Components(free, geometry.Columns, geometry.Rows))
+            {
+                if (budget.Used >= budget.Minimum || budget.Left < 30f) return;
+                if (component.Count * cellArea < 120f) continue;
+                // The freest point of the remainder anchors the figure.
+                var best = component[0];
+                var bestClearance = -1f;
+                foreach (var index in component)
+                {
+                    var clearance = ClearanceInside(geometry, free, index);
+                    if (clearance <= bestClearance) continue;
+                    bestClearance = clearance;
+                    best = index;
+                }
+                var grammar = context.Design.Grammar;
+                var request = new RoomRequest
+                {
+                    Shapes = grammar == PlazaGrammar.Classic ? new[] { PlazaCoreShape.Rectangle }
+                        : grammar == PlazaGrammar.Modern
+                            ? new[] { PlazaCoreShape.Parallelogram }
+                            : new[] { PlazaCoreShape.Ellipse },
+                    Rim = 0.8f, MinimumWidth = 4f, MinimumArea = 30f,
+                    TargetArea = math.min(budget.Left, math.min(component.Count * cellArea * 0.7f,
+                        budget.Minimum - budget.Used + 40f)),
+                    Constraint = FreeAt, Salt = 5u,
+                };
+                request.Centres.Add(geometry.CellCenter(best));
+                request.Axes.Add(geometry.MajorAxis);
+                request.Axes.Add(geometry.MinorAxis);
+                if (grammar == PlazaGrammar.Modern)
+                    request.Axes.Add(Rotate(geometry.MajorAxis, math.radians(25f)));
+                request.Aspects.Add(1f);
+                request.Aspects.Add(0.6f);
+                request.Aspects.Add(0.4f);
+                if (!FitRoom(context, request, out var shape)) continue;
+                var polygon = shape.Outline();
+                if (!IsSimple(polygon) || !KeepsClear(context, polygon, false)) continue;
+                var zone = new PlazaGreenZone
+                {
+                    Kind = PlazaGreenKind.Garden,
+                    Room = NearestRoom(context, shape.Center),
+                };
+                zone.Polygon.AddRange(polygon);
+                context.Design.GreenZones.Add(zone);
+                budget.Used += PlazaShape.Area(polygon);
+            }
+        }
+
+        private static bool NearGreen(Context context, float2 point, float distance)
+        {
+            foreach (var zone in context.Design.GreenZones)
+                if (PolygonMath.PointInside(point, zone.Polygon)
+                    || DistanceToOutline(point, zone.Polygon) < distance) return true;
+            return false;
+        }
+
+        /// <summary>Connected components of a mask, largest first.</summary>
+        private static List<List<int>> Components(bool[] mask, int columns, int rows)
+        {
+            var seen = new bool[mask.Length];
+            var result = new List<List<int>>();
+            for (var start = 0; start < mask.Length; start++)
+            {
+                if (!mask[start] || seen[start]) continue;
+                var component = new List<int>();
+                var queue = new Queue<int>();
+                queue.Enqueue(start);
+                seen[start] = true;
+                while (queue.Count > 0)
+                {
+                    var index = queue.Dequeue();
+                    component.Add(index);
+                    var x = index % columns;
+                    var y = index / columns;
+                    foreach (var next in new[] { x > 0 ? index - 1 : -1,
+                                 x + 1 < columns ? index + 1 : -1,
+                                 y > 0 ? index - columns : -1,
+                                 y + 1 < rows ? index + columns : -1 })
+                    {
+                        if (next < 0 || !mask[next] || seen[next]) continue;
+                        seen[next] = true;
+                        queue.Enqueue(next);
+                    }
+                }
+                result.Add(component);
+            }
+            result.Sort((a, b) => b.Count != a.Count ? b.Count.CompareTo(a.Count)
+                : a[0].CompareTo(b[0]));
+            return result;
+        }
+
+        /// <summary>Distance in metres from a free cell to the nearest blocked cell.</summary>
+        private static float ClearanceInside(PlazaGeometry geometry, bool[] free, int index)
+        {
+            var x = index % geometry.Columns;
+            var y = index / geometry.Columns;
+            for (var radius = 1; radius < 64; radius++)
+            for (var d = -radius; d <= radius; d++)
+                foreach (var (cx, cy) in new[] { (x + d, y - radius), (x + d, y + radius),
+                             (x - radius, y + d), (x + radius, y + d) })
+                    if (cx < 0 || cy < 0 || cx >= geometry.Columns || cy >= geometry.Rows
+                        || !free[cy * geometry.Columns + cx])
+                        return radius * geometry.CellSize;
+            return 64f * geometry.CellSize;
+        }
+
+        private static float2 AreaCentre(List<float2> polygon)
+            => PlazaGeometry.AreaCentroid(polygon);
+
+        private static int NearestRoom(Context context, float2 point)
+        {
+            var best = 0;
+            var bestDistance = float.MaxValue;
+            for (var r = 0; r < context.Design.Rooms.Count; r++)
+            {
+                var distance = DistanceToOutline(point, context.Design.Rooms[r].Boundary);
+                if (distance >= bestDistance) continue;
+                bestDistance = distance;
+                best = r;
+            }
+            return best;
+        }
+
+        /// <summary>Role of the room edge closest to a point.</summary>
+        private static PlazaEdgeRole NearestEdgeRole(Context context, float2 point)
+        {
+            var role = PlazaEdgeRole.Open;
+            var best = float.MaxValue;
+            foreach (var room in context.Design.Rooms)
+            foreach (var edge in room.Edges)
+            {
+                var distance = PlazaMovement.DistanceToPolyline(point, edge.Points);
+                if (distance >= best) continue;
+                best = distance;
+                role = edge.Role;
+            }
+            return role;
+        }
+
+        private static bool InGreen(Context context, float2 point)
+        {
+            foreach (var zone in context.Design.GreenZones)
+                if (PolygonMath.PointInside(point, zone.Polygon)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Green may not reach into a room (unless it is an inner bed of the
+        /// main square), across a corridor or into other green.
+        /// </summary>
+        private static bool KeepsClear(Context context, List<float2> zone, bool inner)
+        {
+            var rooms = context.Design.Rooms;
+            for (var r = 0; r < rooms.Count; r++)
+            {
+                if (inner && r == 0) continue;
+                var room = rooms[r];
+                foreach (var point in zone)
+                    if (room.Shape.Contains(point, room.Boundary)) return false;
+                foreach (var point in PlazaShape.Densify(room.Boundary, 1f))
+                    if (PolygonMath.PointInside(point, zone)) return false;
+            }
+            foreach (var corridor in context.Design.MovementCorridors)
+            {
+                var points = corridor.Points;
                 for (var i = 0; i + 1 < points.Count; i++)
                 {
-                    var length = math.distance(points[i], points[i + 1]);
-                    var pieces = math.max(1, (int)math.ceil(length / 0.5f));
+                    var pieces = math.max(1, (int)math.ceil(math.distance(points[i],
+                        points[i + 1]) / 0.5f));
                     for (var k = 0; k <= pieces; k++)
                         if (PolygonMath.PointInside(math.lerp(points[i], points[i + 1],
                                 (float)k / pieces), zone)) return false;
                 }
             }
+            foreach (var other in context.Design.GreenZones)
+            {
+                foreach (var point in zone)
+                    if (PolygonMath.PointInside(point, other.Polygon)) return false;
+                foreach (var point in other.Polygon)
+                    if (PolygonMath.PointInside(point, zone)) return false;
+            }
             return true;
-        }
-
-        private static bool NearAnyCorridor(PlazaDesign design, float2 point, float extra)
-        {
-            for (var i = 0; i < design.MovementCorridors.Count; i++)
-            {
-                var corridor = design.MovementCorridors[i];
-                if (PlazaMovement.DistanceToPolyline(point, corridor.Points)
-                    < corridor.Width * 0.5f + extra) return true;
-            }
-            return false;
-        }
-
-        private static bool NearEntrance(PlazaDesign design, PlazaGeometry geometry,
-            float2 point)
-        {
-            for (var i = 0; i < design.MovementCorridors.Count; i++)
-            {
-                var corridor = design.MovementCorridors[i];
-                if (corridor.Entrance < 0) continue;
-                if (math.distance(point, corridor.Points[0]) < EntranceClearance)
-                    return true;
-            }
-            return false;
         }
 
         private static bool[] Erode(bool[] mask, int columns, int rows, int radius)

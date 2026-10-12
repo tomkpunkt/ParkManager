@@ -22,6 +22,8 @@ namespace ParkManager.Geometry
         /// </summary>
         internal float Scale;
         internal IReadOnlyList<float2> Template;
+        /// <summary>Parallelogram shear along the axis, as share of the width.</summary>
+        internal float Skew;
 
         private const int EllipseSegments = 48;
         private const float ChamferFraction = 0.22f;
@@ -53,6 +55,15 @@ namespace ParkManager.Geometry
                     outline.Add(Center + u * (-a + cut) + v * b);
                     outline.Add(Center - u * a + v * (b - cut));
                     outline.Add(Center - u * a - v * (b - cut));
+                    break;
+                case PlazaCoreShape.Parallelogram:
+                    // Sheared along its axis: the long sides stay parallel,
+                    // the short sides lean.
+                    var shear = Skew * HalfWidth;
+                    outline.Add(Center + Axis * (-HalfLength - shear) - Normal * HalfWidth);
+                    outline.Add(Center + Axis * (HalfLength - shear) - Normal * HalfWidth);
+                    outline.Add(Center + Axis * (HalfLength + shear) + Normal * HalfWidth);
+                    outline.Add(Center + Axis * (-HalfLength + shear) + Normal * HalfWidth);
                     break;
                 case PlazaCoreShape.Ellipse:
                     for (var i = 0; i < EllipseSegments; i++)

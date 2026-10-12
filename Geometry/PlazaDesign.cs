@@ -4,8 +4,9 @@ using Unity.Mathematics;
 namespace ParkManager.Geometry
 {
     /// <summary>
-    /// Composition style of a plaza. Each style has its own composition
-    /// rules (preferred core shapes, axes, framing), not just other values.
+    /// UI preset. Internally a preset fixes either the spatial topology or
+    /// the design grammar (or neither for Auto); the other decision follows
+    /// from the geometry.
     /// </summary>
     internal enum PlazaStyle : byte
     {
@@ -14,9 +15,30 @@ namespace ParkManager.Geometry
         Modern = 2,
         Promenade = 3,
         Sequence = 4,
+        /// <summary>Natural grammar; reachable for review, not yet a UI preset.</summary>
+        Natural = 5,
     }
 
-    /// <summary>Geometric primitive the main plaza was fitted from.</summary>
+    /// <summary>How the spaces of the plaza are organised.</summary>
+    internal enum PlazaTopology : byte
+    {
+        /// <summary>One dominant square, optionally with entrance courts.</summary>
+        Central = 0,
+        /// <summary>A linear space with accompanying pockets.</summary>
+        Linear = 1,
+        /// <summary>Two or more distinct, connected rooms.</summary>
+        Sequence = 2,
+    }
+
+    /// <summary>The design language applied to the spaces.</summary>
+    internal enum PlazaGrammar : byte
+    {
+        Classic = 0,
+        Modern = 1,
+        Natural = 2,
+    }
+
+    /// <summary>Geometric primitive a room was fitted from.</summary>
     internal enum PlazaCoreShape : byte
     {
         Rectangle = 0,
@@ -24,21 +46,54 @@ namespace ParkManager.Geometry
         Ellipse = 2,
         ConvexPolygon = 3,
         BoundaryAligned = 4,
+        Parallelogram = 5,
+        Strip = 6,
+    }
+
+    internal enum PlazaRoomRole : byte
+    {
+        MainSquare = 0,
+        SecondarySquare = 1,
+        EntranceCourt = 2,
+        Passage = 3,
+        GardenCourt = 4,
+    }
+
+    /// <summary>Design decision for one edge of a room.</summary>
+    internal enum PlazaEdgeRole : byte
+    {
+        Open = 0,
+        TreeRow = 1,
+        GreenBorder = 2,
+        SeatingEdge = 3,
+        ArchitecturalEdge = 4,
+    }
+
+    internal enum PlazaGreenKind : byte
+    {
+        /// <summary>A bed along a room edge, between room and plot boundary.</summary>
+        Border = 0,
+        /// <summary>Formal lawn panel inside a large square.</summary>
+        Parterre = 1,
+        /// <summary>Long planting island structuring a large square.</summary>
+        Island = 2,
+        /// <summary>Organic garden area.</summary>
+        Garden = 3,
     }
 
     internal enum PlazaFocalKind : byte
     {
         /// <summary>Main visual centre, the place for a centerpiece.</summary>
         Primary = 0,
-        /// <summary>Centre of a secondary space.</summary>
+        /// <summary>Centre of a secondary room.</summary>
         Secondary = 1,
     }
 
     internal enum PlazaFurnitureZoneKind : byte
     {
-        /// <summary>Seating along the edge of a space, facing into it.</summary>
+        /// <summary>Seating along the edge of a room, facing into it.</summary>
         EdgeSeating = 0,
-        /// <summary>A quiet secondary space as a whole.</summary>
+        /// <summary>A quiet room as a whole.</summary>
         QuietCorner = 1,
     }
 
@@ -56,7 +111,7 @@ namespace ParkManager.Geometry
     {
         internal float2 Position;
         internal PlazaFocalKind Kind;
-        /// <summary>Free radius around the point inside its space.</summary>
+        /// <summary>Free radius around the point inside its room.</summary>
         internal float Clearance;
     }
 
@@ -65,8 +120,10 @@ namespace ParkManager.Geometry
     {
         internal readonly List<float2> Points = new List<float2>();
         internal float Width;
-        /// <summary>Index of the entrance it serves, or -1 between spaces.</summary>
+        /// <summary>Index of the entrance it serves, or -1 between rooms.</summary>
         internal int Entrance = -1;
+        /// <summary>Room the corridor leads into.</summary>
+        internal int Room = -1;
     }
 
     /// <summary>
@@ -86,51 +143,102 @@ namespace ParkManager.Geometry
     {
         internal PlazaFurnitureZoneKind Kind;
         internal readonly List<float2> Polygon = new List<float2>();
-        /// <summary>Direction seats should face (into the space).</summary>
+        /// <summary>Direction seats should face (into the room).</summary>
         internal float2 Facing;
     }
 
-    /// <summary>Measured qualities of a design, used by tests and later scoring.</summary>
+    /// <summary>One edge of a room with its own design decision.</summary>
+    internal sealed class PlazaRoomEdge
+    {
+        internal readonly List<float2> Points = new List<float2>();
+        internal PlazaEdgeRole Role;
+        /// <summary>Unit direction from the room towards the plot boundary.</summary>
+        internal float2 Outward;
+        /// <summary>Free depth between this edge and the plot boundary.</summary>
+        internal float Rim;
+        /// <summary>A corridor or passage arrives at this edge.</summary>
+        internal bool Arrival;
+    }
+
+    /// <summary>A spatial chamber of the plaza and its place in the hierarchy.</summary>
+    internal sealed class PlazaRoom
+    {
+        internal readonly List<float2> Boundary = new List<float2>();
+        internal PlazaRoomRole Role;
+        /// <summary>Design weight 0–1; the main square has 1.</summary>
+        internal float Importance;
+        internal readonly List<int> ConnectedRooms = new List<int>();
+        internal readonly List<PlazaRoomEdge> Edges = new List<PlazaRoomEdge>();
+        internal float2 Center;
+        internal float2 Axis;
+        internal PlazaShape Shape;
+    }
+
+    /// <summary>A deliberately shaped green area.</summary>
+    internal sealed class PlazaGreenZone
+    {
+        internal readonly List<float2> Polygon = new List<float2>();
+        internal PlazaGreenKind Kind;
+        /// <summary>Room whose edge or interior it belongs to.</summary>
+        internal int Room;
+    }
+
+    /// <summary>Measured qualities of a design, used by tests and scoring.</summary>
     internal sealed class PlazaDesignMetrics
     {
         internal float PolygonArea;
         internal float MainPlazaArea;
         internal float MainPlazaMinimumWidth;
-        internal float SecondaryArea;
+        internal float RoomArea;
         internal float GreenArea;
         internal float CoreScore;
         internal float Compactness;
         internal float Convexity;
         internal float Elongation;
         internal float CellSize;
-        internal readonly Dictionary<PlazaStyle, float> StyleSuitability =
-            new Dictionary<PlazaStyle, float>();
+        internal readonly Dictionary<PlazaTopology, float> TopologySuitability =
+            new Dictionary<PlazaTopology, float>();
+        internal readonly Dictionary<PlazaGrammar, float> GrammarSuitability =
+            new Dictionary<PlazaGrammar, float>();
+        // Soft quality scores, 0–1.
+        internal float SpatialHierarchy;
+        internal float GreenComposition;
+        internal float EdgeDiversity;
+        internal float StyleIdentity;
+        internal float EntranceIntegration;
         internal double Milliseconds;
     }
 
     /// <summary>
     /// Abstract spatial composition of a plaza, independent of CS2 entities:
-    /// a coherent main plaza, secondary spaces, green zones, movement
-    /// corridors and the design intent for focal points, tree rows and
-    /// seating. Phase 2 turns the intent into placements.
+    /// a room graph with roles and edge decisions, designed green zones,
+    /// movement corridors and the design intent for focal points, tree rows,
+    /// groves and seating. Phase 2 turns the intent into placements.
     /// </summary>
     internal sealed class PlazaDesign
     {
         internal PlazaStyle RequestedStyle;
-        internal PlazaStyle Style;
+        internal PlazaTopology Topology;
+        internal PlazaGrammar Grammar;
         internal int Seed;
         internal PlazaCoreShape CoreShape;
-        internal readonly List<float2> MainPlaza = new List<float2>();
-        internal readonly List<List<float2>> SecondarySpaces = new List<List<float2>>();
-        internal readonly List<List<float2>> GreenZones = new List<List<float2>>();
+        internal readonly List<PlazaRoom> Rooms = new List<PlazaRoom>();
+        internal readonly List<PlazaGreenZone> GreenZones = new List<PlazaGreenZone>();
         internal readonly List<PlazaAxis> CompositionAxes = new List<PlazaAxis>();
         internal readonly List<PlazaCorridor> MovementCorridors = new List<PlazaCorridor>();
         internal readonly List<PlazaFocalPoint> FocalPoints = new List<PlazaFocalPoint>();
         internal readonly List<PlazaPlacementLine> TreeRows = new List<PlazaPlacementLine>();
+        /// <summary>Areas for informal groups of trees inside green zones.</summary>
+        internal readonly List<List<float2>> TreeGroups = new List<List<float2>>();
         internal readonly List<PlazaPlacementZone> FurnitureZones = new List<PlazaPlacementZone>();
         internal readonly PlazaDesignMetrics Metrics = new PlazaDesignMetrics();
         /// <summary>Why no design could be composed; null on success.</summary>
         internal string Failure;
-        internal bool Succeeded => Failure == null && MainPlaza.Count >= 3;
+
+        /// <summary>Outline of the main square (room 0).</summary>
+        internal List<float2> MainPlaza => Rooms.Count > 0 ? Rooms[0].Boundary
+            : new List<float2>();
+        internal bool Succeeded => Failure == null && Rooms.Count > 0
+            && Rooms[0].Boundary.Count >= 3;
     }
 }

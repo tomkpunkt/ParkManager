@@ -29,7 +29,8 @@ const plantColor = (item: { kind: string; species?: number }) =>
   (item.kind === 'Tree' ? treeColors : bushColors)[item.species ?? 0];
 type DesignPoint = { x: number; y: number };
 type PlazaDesignView = { style: string; mainPlaza: DesignPoint[];
-  secondarySpaces: DesignPoint[][]; greenZones: DesignPoint[][];
+  rooms: { role: string; boundary: DesignPoint[] }[];
+  greenZones: { kind: string; polygon: DesignPoint[] }[];
   treeRows: { points: DesignPoint[] }[];
   focalPoints: { x: number; y: number; kind: string }[] };
 const toSvg = (points: DesignPoint[]) => points.map((p) => `${p.x * 8},${p.y * 8}`).join(' ');
@@ -239,10 +240,11 @@ function App() {
             style={livePlan && pathPlanReady && get('SiteType') !== 1
               ? { fill: '#78a05a', stroke: '#e6e6c8' } : undefined} />
           {design ? <g data-testid="design-overlay">
-            {design.greenZones.map((zone, i) => <polygon key={`g${i}`} points={toSvg(zone)}
+            {design.rooms.slice(1).filter((room) => room.role !== 'Passage').map((room, i) =>
+              <polygon key={`s${i}`} points={toSvg(room.boundary)}
+                style={{ fill: '#e2d5b5', stroke: '#fff6dc' }} />)}
+            {design.greenZones.map((zone, i) => <polygon key={`g${i}`} points={toSvg(zone.polygon)}
               style={{ fill: '#6aa75a', stroke: '#4f8a43' }} />)}
-            {design.secondarySpaces.map((zone, i) => <polygon key={`s${i}`} points={toSvg(zone)}
-              style={{ fill: '#e2d5b5', stroke: '#fff6dc' }} />)}
             {design.mainPlaza.length ? <polygon data-testid="design-main" points={toSvg(design.mainPlaza)}
               style={{ fill: '#ece2c8', stroke: '#fff6dc', strokeWidth: 3 }} /> : null}
             {design.treeRows.flatMap((row, r) => row.points.map((p, i) =>

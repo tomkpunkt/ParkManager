@@ -85,25 +85,30 @@ Gameface's Yoga layout does not support CSS Grid. Production panel columns
 therefore use sized Flexbox items; Playwright checks their geometry in Chromium
 and the CSS guard prevents a browser-only Grid regression.
 
-## Plaza composer (phase 1)
+## Plaza composer (phase 1.5)
 
 `PlazaComposer` (`Geometry/PlazaComposer*.cs`, `PlazaGeometry.cs`,
 `PlazaMovement.cs`, `PlazaShapes.cs`) composes a plaza as an urban space before
 any asset is placed: geometry analysis with a distance field, desire lines
-between entrances, a main plaza fitted from exact primitives, secondary
-spaces, access corridors, green zones and the design intent (axes, focal
-points, tree rows, seating zones). It is not used in the game yet; the
+between entrances, a spatial topology (central, linear, sequence) and a design
+grammar (classic, modern, natural), a graph of rooms fitted from exact
+primitives with a role for every room edge, access corridors, designed green
+zones and the design intent (axes, focal points, tree rows, seating zones). It is not used in the game yet; the
 existing `PlazaPlanner` stays the active plaza planner.
 
 `PlazaDesignTests` runs every characteristic outline (square, elongated,
 L-shape, U-shape, irregular, bottleneck, small, large) with several entrance
-configurations in every style and checks hard rules: the main plaza lies
-inside the outline as one coherent shape with minimum area and width, green
+configurations in every style and checks hard rules: presets keep their
+promise (a sequence has two real squares, a linear space is long), the main
+square is the largest and most important room and lies inside the outline
+with minimum area and width, green stays within the grammar's share, green
 zones are simple polygons that never cut into a space or a corridor, every
 entrance reaches the main plaza, tree rows stay on the rim, and equal input
 gives an equal design. The batch run writes `plaza-designs.json` next to its
 report.
 
 For visual review, start the mock and open `http://localhost:8765/designs.html`:
-a gallery of all cases and styles, computed live from the C# code. In the
+a gallery of all cases and styles, computed live from the C# code, with
+toggleable layers for the room graph, surfaces with edge roles and the design
+intent, plus the soft scores (H hierarchy, G green, K edges, S style, E entrances). In the
 mock itself, "Plaza-Entwurf" overlays the design for the drawn outline.

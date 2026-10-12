@@ -6,77 +6,77 @@ namespace ParkManager.Geometry
 {
     /// <summary>
     /// Composes a plaza as an urban space instead of filling a polygon with
-    /// objects: analyse the geometry, choose a style, fit a coherent main
-    /// plaza from exact primitives, open it to the entrances, and only then
-    /// derive green zones, axes, focal points, tree rows and seating from
-    /// that structure. Deterministic for equal inputs and seed.
+    /// objects. Two independent decisions shape it: the spatial topology
+    /// (central square, linear space, sequence of rooms) and the design
+    /// grammar (classic, modern, natural). Rooms come first, then the
+    /// decision for every room edge, then designed green, then the intent
+    /// for trees, focal points and seating. Deterministic for equal input.
     /// </summary>
     internal static partial class PlazaComposer
     {
-        private sealed class StyleRules
+        private sealed class GrammarRules
         {
             internal PlazaCoreShape[] Shapes;
-            /// <summary>Target and minimum share of the plot for the main plaza.</summary>
-            internal float TargetShare;
-            internal float MinimumShare;
-            /// <summary>Free rim between plaza and boundary, as share of the minor span.</summary>
+            /// <summary>Plot share of a central main square.</summary>
+            internal float CentralShare;
             internal float RimShare;
             internal float MinimumRim;
             internal float MaximumRim;
             internal float CorridorWidth;
             internal float TreeSpacing;
-            internal int MaximumSecondarySpaces;
-            internal bool OrganicGreen;
+            /// <summary>Design target for the green share of the plot.</summary>
+            internal float GreenMinimum;
+            internal float GreenMaximum;
+            internal float BedDepth;
         }
 
-        private static readonly Dictionary<PlazaStyle, StyleRules> Rules =
-            new Dictionary<PlazaStyle, StyleRules>
+        private static readonly Dictionary<PlazaGrammar, GrammarRules> Grammars =
+            new Dictionary<PlazaGrammar, GrammarRules>
             {
-                [PlazaStyle.Classic] = new StyleRules
+                [PlazaGrammar.Classic] = new GrammarRules
                 {
                     Shapes = new[] { PlazaCoreShape.Rectangle,
-                        PlazaCoreShape.ChamferedRectangle, PlazaCoreShape.Ellipse,
-                        PlazaCoreShape.BoundaryAligned },
-                    TargetShare = 0.46f, MinimumShare = 0.24f,
-                    RimShare = 0.13f, MinimumRim = 3f, MaximumRim = 12f,
-                    CorridorWidth = 5f, TreeSpacing = 7.5f,
-                    MaximumSecondarySpaces = 0, OrganicGreen = false,
+                        PlazaCoreShape.ChamferedRectangle, PlazaCoreShape.BoundaryAligned },
+                    CentralShare = 0.42f, RimShare = 0.14f, MinimumRim = 3f,
+                    MaximumRim = 14f, CorridorWidth = 5f, TreeSpacing = 7.5f,
+                    GreenMinimum = 0.15f, GreenMaximum = 0.3f, BedDepth = 9f,
                 },
-                [PlazaStyle.Modern] = new StyleRules
+                [PlazaGrammar.Modern] = new GrammarRules
                 {
-                    Shapes = new[] { PlazaCoreShape.Ellipse,
+                    Shapes = new[] { PlazaCoreShape.Parallelogram,
                         PlazaCoreShape.ConvexPolygon, PlazaCoreShape.ChamferedRectangle },
-                    TargetShare = 0.42f, MinimumShare = 0.22f,
-                    RimShare = 0.1f, MinimumRim = 2f, MaximumRim = 10f,
-                    CorridorWidth = 4f, TreeSpacing = 6f,
-                    MaximumSecondarySpaces = 1, OrganicGreen = true,
+                    CentralShare = 0.38f, RimShare = 0.13f, MinimumRim = 2.5f,
+                    MaximumRim = 13f, CorridorWidth = 4f, TreeSpacing = 6f,
+                    GreenMinimum = 0.2f, GreenMaximum = 0.35f, BedDepth = 10f,
                 },
-                [PlazaStyle.Promenade] = new StyleRules
-                {
-                    Shapes = new[] { PlazaCoreShape.ChamferedRectangle,
-                        PlazaCoreShape.Rectangle },
-                    TargetShare = 0.4f, MinimumShare = 0.2f,
-                    RimShare = 0.16f, MinimumRim = 3f, MaximumRim = 10f,
-                    CorridorWidth = 5f, TreeSpacing = 7f,
-                    MaximumSecondarySpaces = 0, OrganicGreen = false,
-                },
-                [PlazaStyle.Sequence] = new StyleRules
+                [PlazaGrammar.Natural] = new GrammarRules
                 {
                     Shapes = new[] { PlazaCoreShape.Ellipse,
-                        PlazaCoreShape.ChamferedRectangle, PlazaCoreShape.ConvexPolygon },
-                    TargetShare = 0.3f, MinimumShare = 0.14f,
-                    RimShare = 0.1f, MinimumRim = 2.5f, MaximumRim = 9f,
-                    CorridorWidth = 4f, TreeSpacing = 6.5f,
-                    MaximumSecondarySpaces = 2, OrganicGreen = true,
+                        PlazaCoreShape.ChamferedRectangle },
+                    CentralShare = 0.32f, RimShare = 0.16f, MinimumRim = 3f,
+                    MaximumRim = 16f, CorridorWidth = 4f, TreeSpacing = 6.5f,
+                    GreenMinimum = 0.3f, GreenMaximum = 0.45f, BedDepth = 12f,
                 },
             };
 
-        /// <summary>Plaza share of a secondary space.</summary>
-        private const float SecondaryTargetShare = 0.1f;
         private const float MinimumCoreWidth = 6f;
-        private const float GreenGap = 1.5f;
+        /// <summary>Paved walk kept between a room and any green.</summary>
+        private const float GreenGap = 2f;
         private const float EntranceClearance = 4f;
-        private const float MinimumGreenArea = 20f;
+
+        /// <summary>Everything the composition steps share.</summary>
+        private sealed class Context
+        {
+            internal PlazaDesign Design;
+            internal PlazaGeometry Geometry;
+            internal PlazaMovement Movement;
+            internal GrammarRules Rules;
+            internal int Seed;
+            /// <summary>Usable width: diameter of the widest inscribed circle.</summary>
+            internal float Usable;
+            internal float MinimumWidth;
+            internal float Rim;
+        }
 
         /// <summary>Composes a plaza design; check <see cref="PlazaDesign.Succeeded"/>.</summary>
         internal static PlazaDesign Compose(IReadOnlyList<float2> polygon,
@@ -97,137 +97,267 @@ namespace ParkManager.Geometry
             metrics.Convexity = geometry.Convexity;
             metrics.Elongation = geometry.Elongation;
             metrics.CellSize = geometry.CellSize;
-            RateStyles(geometry, movement, metrics.StyleSuitability);
+            RateTopologies(geometry, movement, metrics.TopologySuitability);
+            RateGrammars(geometry, movement, metrics.GrammarSuitability);
 
-            // Auto picks the best-suited style; a style whose core cannot fit
-            // falls back to the next suitable one instead of failing.
-            var order = new List<PlazaStyle>();
-            if (style != PlazaStyle.Auto) order.Add(style);
-            var ranked = new List<PlazaStyle>(metrics.StyleSuitability.Keys);
-            ranked.Sort((a, b) => metrics.StyleSuitability[b]
-                .CompareTo(metrics.StyleSuitability[a]));
-            foreach (var candidate in ranked)
-                if (!order.Contains(candidate)) order.Add(candidate);
+            // A preset fixes one of the two decisions; the geometry decides
+            // the other one.
+            PlazaTopology? forcedTopology = style == PlazaStyle.Promenade
+                ? PlazaTopology.Linear
+                : style == PlazaStyle.Sequence ? PlazaTopology.Sequence
+                : (PlazaTopology?)null;
+            PlazaGrammar? forcedGrammar = style == PlazaStyle.Classic
+                ? PlazaGrammar.Classic
+                : style == PlazaStyle.Modern ? PlazaGrammar.Modern
+                : style == PlazaStyle.Natural ? PlazaGrammar.Natural
+                : (PlazaGrammar?)null;
+            design.Grammar = forcedGrammar ?? Best(metrics.GrammarSuitability);
 
-            foreach (var candidate in order)
+            var topologies = new List<PlazaTopology>();
+            if (forcedTopology.HasValue) topologies.Add(forcedTopology.Value);
+            foreach (var candidate in Ranked(metrics.TopologySuitability))
+                if (!topologies.Contains(candidate)) topologies.Add(candidate);
+
+            var usable = geometry.MaximumDistance * 2f;
+            var context = new Context
             {
-                if (!TryFitCore(geometry, movement, candidate, seed,
-                        out var core, out var coreScore)) continue;
-                design.Style = candidate;
-                design.CoreShape = core.Kind;
-                design.MainPlaza.AddRange(core.Outline());
-                metrics.CoreScore = coreScore;
-                ComposeAround(design, geometry, movement, core, Rules[candidate], seed);
+                Design = design, Geometry = geometry, Movement = movement,
+                Rules = Grammars[design.Grammar], Seed = seed, Usable = usable,
+                MinimumWidth = math.clamp(usable * 0.45f, MinimumCoreWidth, usable * 0.8f),
+            };
+            context.Rim = math.max(0.5f, math.min(math.clamp(usable
+                    * context.Rules.RimShare, context.Rules.MinimumRim,
+                    context.Rules.MaximumRim), (usable - context.MinimumWidth) * 0.5f));
+
+            foreach (var topology in topologies)
+            {
+                design.Rooms.Clear();
+                if (!BuildRooms(context, topology)) continue;
+                design.Topology = topology;
                 break;
             }
-            if (design.MainPlaza.Count < 3)
-                design.Failure = "no main plaza fits the outline";
+            if (design.Rooms.Count == 0)
+            {
+                design.Failure = "no main square fits the outline";
+            }
+            else
+            {
+                design.CoreShape = design.Rooms[0].Shape.Kind;
+                ConnectEntrances(context);
+                AssignEdgeRoles(context);
+                ComposeGreen(context);
+                AddDesignIntent(context);
+                ScoreDesign(context);
+            }
 
-            metrics.MainPlazaArea = PlazaShape.Area(design.MainPlaza);
-            metrics.MainPlazaMinimumWidth = design.MainPlaza.Count >= 3
-                ? PlazaShape.MinimumWidth(design.MainPlaza) : 0f;
-            for (var i = 0; i < design.SecondarySpaces.Count; i++)
-                metrics.SecondaryArea += PlazaShape.Area(design.SecondarySpaces[i]);
-            for (var i = 0; i < design.GreenZones.Count; i++)
-                metrics.GreenArea += PlazaShape.Area(design.GreenZones[i]);
+            metrics.MainPlazaArea = design.Rooms.Count > 0
+                ? PlazaShape.Area(design.Rooms[0].Boundary) : 0f;
+            metrics.MainPlazaMinimumWidth = design.Rooms.Count > 0
+                ? PlazaShape.MinimumWidth(design.Rooms[0].Boundary) : 0f;
+            foreach (var room in design.Rooms)
+                if (room.Role != PlazaRoomRole.Passage)
+                    metrics.RoomArea += PlazaShape.Area(room.Boundary);
+            foreach (var zone in design.GreenZones)
+                metrics.GreenArea += PlazaShape.Area(zone.Polygon);
             timer.Stop();
             metrics.Milliseconds = timer.Elapsed.TotalMilliseconds;
             return design;
         }
 
-        /// <summary>
-        /// Suitability 0–1 of each style for the geometry and entrances.
-        /// </summary>
-        private static void RateStyles(PlazaGeometry geometry, PlazaMovement movement,
-            Dictionary<PlazaStyle, float> result)
-        {
-            // A square has compactness π/4; treat that as fully compact.
-            var compact = math.saturate(geometry.Compactness / 0.785f);
-            var elongation = math.saturate((geometry.Elongation - 1f) / 1.5f);
-            var concave = math.saturate((0.93f - geometry.Convexity) / 0.3f);
-            var rooms = geometry.RoomCentres(geometry.MaximumDistance * 0.45f,
-                geometry.MaximumDistance * 2.2f).Count;
+        private static T Best<T>(Dictionary<T, float> scores) => Ranked(scores)[0];
 
-            // Entrances far apart along the main axis favour a promenade.
+        private static List<T> Ranked<T>(Dictionary<T, float> scores)
+        {
+            var keys = new List<T>(scores.Keys);
+            keys.Sort((a, b) =>
+            {
+                var order = scores[b].CompareTo(scores[a]);
+                return order != 0 ? order : Comparer<T>.Default.Compare(a, b);
+            });
+            return keys;
+        }
+
+        // ---------------------------------------------------------- ratings
+
+        private static void RateTopologies(PlazaGeometry geometry, PlazaMovement movement,
+            Dictionary<PlazaTopology, float> result)
+        {
+            var compact = math.saturate(geometry.Compactness / 0.785f);
+            var concave = math.saturate((0.93f - geometry.Convexity) / 0.3f);
+            var rooms = SeparateRooms(geometry, movement);
+            var spread = EntranceSpread(geometry, movement);
+            result[PlazaTopology.Central] = 0.45f + 0.3f * compact
+                - 0.35f * concave - 0.2f * math.saturate((geometry.Elongation - 1.8f) / 1.2f);
+            // A plot made of separate rooms is a sequence, however long it is.
+            result[PlazaTopology.Linear] = (0.8f * math.saturate((geometry.Elongation - 1.6f)
+                / 1.2f) + 0.2f * spread * (geometry.Elongation > 1.6f ? 1f : 0f))
+                * (rooms >= 2 ? 0.5f : 1f);
+            // Only a plot with real rooms suggests a sequence on its own.
+            result[PlazaTopology.Sequence] = 0.1f + 0.5f * concave + (rooms >= 2 ? 0.35f : 0f);
+        }
+
+        private static void RateGrammars(PlazaGeometry geometry, PlazaMovement movement,
+            Dictionary<PlazaGrammar, float> result)
+        {
+            var compact = math.saturate(geometry.Compactness / 0.785f);
+            var concave = math.saturate((0.93f - geometry.Convexity) / 0.3f);
+            var symmetric = Symmetry(geometry);
+            var diagonal = Diagonality(geometry, movement);
+            result[PlazaGrammar.Classic] = 0.35f * compact + 0.25f
+                * math.saturate((geometry.Convexity - 0.7f) / 0.3f) + 0.4f * symmetric;
+            result[PlazaGrammar.Modern] = 0.3f + 0.35f * diagonal
+                + 0.25f * (1f - symmetric) * (1f - concave);
+            result[PlazaGrammar.Natural] = 0.25f + 0.45f * concave
+                + 0.15f * math.saturate((geometry.Area - 5000f) / 10000f);
+        }
+
+        /// <summary>
+        /// Number of rooms the plot really consists of: distance-field
+        /// maxima count as separate rooms only if a bottleneck lies between
+        /// them, not when they sit on the ridge of one long space.
+        /// </summary>
+        private static int SeparateRooms(PlazaGeometry geometry, PlazaMovement movement)
+        {
+            var kept = new List<float2>();
+            foreach (var centre in geometry.RoomCentres(geometry.MaximumDistance * 0.45f,
+                         geometry.MaximumDistance))
+            {
+                var separated = true;
+                foreach (var other in kept)
+                    separated &= Bottleneck(geometry, movement, centre, other);
+                if (separated) kept.Add(centre);
+            }
+            return kept.Count;
+        }
+
+        private static bool Bottleneck(PlazaGeometry geometry, PlazaMovement movement,
+            float2 a, float2 b)
+        {
+            var path = movement.ShortestPath(a, b);
+            if (path == null) return true;
+            var narrowest = float.MaxValue;
+            for (var i = 0; i + 1 < path.Count; i++)
+            {
+                var pieces = math.max(1, (int)math.ceil(math.distance(path[i], path[i + 1])));
+                for (var k = 0; k <= pieces; k++)
+                    narrowest = math.min(narrowest, geometry.DistanceToBoundary(
+                        math.lerp(path[i], path[i + 1], (float)k / pieces)));
+            }
+            var rooms = math.min(geometry.DistanceToBoundary(a), geometry.DistanceToBoundary(b));
+            return narrowest < rooms * 0.7f;
+        }
+
+        /// <summary>How far apart the entrances lie along the main axis (0–1).</summary>
+        private static float EntranceSpread(PlazaGeometry geometry, PlazaMovement movement)
+        {
             var spread = 0f;
             for (var i = 0; i < movement.Entrances.Count; i++)
             for (var j = i + 1; j < movement.Entrances.Count; j++)
                 spread = math.max(spread, math.abs(math.dot(movement.Entrances[i]
                     - movement.Entrances[j], geometry.MajorAxis)));
-            spread = math.saturate(spread / math.max(1f, geometry.MajorSpan));
+            return math.saturate(spread / math.max(1f, geometry.MajorSpan));
+        }
 
-            // Desire lines across the main axis favour a modern diagonal layout.
+        /// <summary>1 when a desire line runs at 45° to the main axis.</summary>
+        private static float Diagonality(PlazaGeometry geometry, PlazaMovement movement)
+        {
             var diagonal = 0f;
             for (var i = 0; i < movement.DesireLines.Count; i++)
             {
                 var line = movement.DesireLines[i];
                 var direction = math.normalizesafe(line[line.Count - 1] - line[0]);
                 var cosine = math.abs(math.dot(direction, geometry.MajorAxis));
-                // 1 at 45°, 0 when parallel or perpendicular to the axis.
                 diagonal = math.max(diagonal, 1f - math.abs(cosine * cosine * 2f - 1f));
             }
-
-            result[PlazaStyle.Classic] = 0.45f * compact
-                + 0.3f * math.saturate((geometry.Convexity - 0.7f) / 0.3f)
-                + 0.25f * (1f - elongation);
-            result[PlazaStyle.Promenade] = math.saturate((geometry.Elongation - 1.6f)
-                / 1.4f) * 0.7f + 0.3f * spread * (geometry.Elongation > 1.6f ? 1f : 0.2f);
-            result[PlazaStyle.Sequence] = 0.6f * concave
-                + 0.4f * (rooms >= 2 ? 1f : 0f);
-            result[PlazaStyle.Modern] = 0.3f + 0.3f * concave * (1f - compact)
-                + 0.3f * diagonal;
+            return diagonal;
         }
 
-        // ------------------------------------------------------ main plaza
+        /// <summary>
+        /// Mirror symmetry of the outline across its main axes (0–1): the
+        /// mean distance of mirrored vertices to the boundary.
+        /// </summary>
+        private static float Symmetry(PlazaGeometry geometry)
+        {
+            var best = 0f;
+            foreach (var normal in new[] { geometry.MajorAxis, geometry.MinorAxis })
+            {
+                var offset = math.dot(geometry.BoxCenter, normal);
+                var error = 0f;
+                for (var i = 0; i < geometry.Polygon.Count; i++)
+                {
+                    var p = geometry.Polygon[i];
+                    var mirrored = p - normal * (2f * (math.dot(p, normal) - offset));
+                    error += math.sqrt(PolygonMath.DistanceToBoundarySquared(mirrored,
+                        geometry.Polygon));
+                }
+                error /= geometry.Polygon.Count;
+                best = math.max(best, 1f - math.saturate(error
+                    / math.max(1f, geometry.MinorSpan * 0.1f)));
+            }
+            return best;
+        }
+
+        // ----------------------------------------------------- room fitting
+
+        /// <summary>What a fitted room has to satisfy.</summary>
+        private sealed class RoomRequest
+        {
+            internal PlazaCoreShape[] Shapes;
+            internal List<float2> Axes = new List<float2>();
+            internal List<float2> Centres = new List<float2>();
+            internal List<float> Aspects = new List<float>();
+            internal float Rim;
+            internal float MinimumWidth;
+            internal float TargetArea;
+            internal float MinimumArea;
+            /// <summary>Rooms to keep a gap to.</summary>
+            internal List<PlazaRoom> Avoid = new List<PlazaRoom>();
+            internal float AvoidGap;
+            /// <summary>Every outline point must satisfy this, if set.</summary>
+            internal Func<float2, bool> Constraint;
+            /// <summary>Grammar- or topology-specific preference added to the score.</summary>
+            internal Func<PlazaShape, float> Bias;
+            internal uint Salt;
+        }
 
         /// <summary>
-        /// Searches orientations, centres, proportions and primitives for the
-        /// best main plaza of a style. Every candidate must lie inside the
-        /// polygon with the style's rim and keep a minimum width.
+        /// Searches primitives, axes, centres and proportions for the best
+        /// room: inside the polygon with the rim, clear of other rooms,
+        /// at least the minimum width and area.
         /// </summary>
-        private static bool TryFitCore(PlazaGeometry geometry, PlazaMovement movement,
-            PlazaStyle style, int seed, out PlazaShape best, out float bestScore)
+        private static bool FitRoom(Context context, RoomRequest request, out PlazaShape best)
         {
-            var rules = Rules[style];
+            var geometry = context.Geometry;
             best = default;
-            bestScore = float.MinValue;
-            // Usable width is the widest inscribed circle, not the bounding
-            // box: an L-shaped plot is only as wide as its arms.
-            var usable = geometry.MaximumDistance * 2f;
-            var minimumWidth = math.clamp(usable * 0.45f, MinimumCoreWidth, usable * 0.8f);
-            var rim = math.clamp(usable * rules.RimShare, rules.MinimumRim,
-                rules.MaximumRim);
-            rim = math.max(0.5f, math.min(rim, (usable - minimumWidth) * 0.5f));
-
             var scored = new List<(PlazaShape shape, float score)>();
-            foreach (var kind in rules.Shapes)
+            foreach (var kind in request.Shapes)
             {
-                if ((kind == PlazaCoreShape.BoundaryAligned
-                        || kind == PlazaCoreShape.ConvexPolygon)
-                    && geometry.Convexity < 0.95f) continue;
-                foreach (var axis in CandidateAxes(geometry, movement, style))
-                foreach (var center in CandidateCentres(geometry, movement, style))
-                foreach (var aspect in CandidateAspects(geometry, style, kind))
+                var polygonBased = kind == PlazaCoreShape.BoundaryAligned
+                    || kind == PlazaCoreShape.ConvexPolygon;
+                if (polygonBased && geometry.Convexity < 0.95f) continue;
+                foreach (var axis in request.Axes)
+                foreach (var center in request.Centres)
+                foreach (var aspect in polygonBased ? new List<float> { 1f } : request.Aspects)
                 {
                     var shape = new PlazaShape
                     {
                         Kind = kind, Center = center, Axis = axis,
+                        Skew = kind == PlazaCoreShape.Parallelogram ? 0.45f : 0f,
                     };
-                    if (kind == PlazaCoreShape.BoundaryAligned
-                        || kind == PlazaCoreShape.ConvexPolygon)
+                    if (polygonBased)
                     {
                         shape.Template = kind == PlazaCoreShape.BoundaryAligned
                             ? geometry.Polygon : geometry.Hull;
                         shape.TemplateAnchor = center;
                     }
-                    if (!GrowToFit(geometry, ref shape, aspect, rim,
-                            rules.TargetShare)) continue;
+                    if (!GrowToFit(context, request, ref shape, aspect)) continue;
                     var outline = shape.Outline();
                     var area = PlazaShape.Area(outline);
-                    if (area < geometry.Area * rules.MinimumShare) continue;
-                    if (PlazaShape.MinimumWidth(outline) < minimumWidth) continue;
-                    scored.Add((shape, ScoreCore(geometry, movement, style, shape,
-                        outline, area, rules.TargetShare)));
+                    if (area < request.MinimumArea) continue;
+                    if (PlazaShape.MinimumWidth(outline) < request.MinimumWidth) continue;
+                    var score = ScoreRoom(context, shape, outline, area, request.TargetArea);
+                    if (request.Bias != null) score += request.Bias(shape);
+                    scored.Add((shape, score));
                 }
             }
             if (scored.Count == 0) return false;
@@ -237,160 +367,35 @@ namespace ParkManager.Geometry
             var top = scored[0].score;
             var close = 1;
             while (close < scored.Count && scored[close].score >= top - 0.02f) close++;
-            var random = new Unity.Mathematics.Random(Seeds.Mix(seed, 0x3c6ef372u));
-            var pick = scored[random.NextInt(0, math.min(close, 4))];
-            best = pick.shape;
-            bestScore = pick.score;
+            var random = new Unity.Mathematics.Random(Seeds.Mix(context.Seed,
+                0x3c6ef372u ^ request.Salt));
+            best = scored[random.NextInt(0, math.min(close, 4))].shape;
             return true;
         }
 
-        private static IEnumerable<float2> CandidateAxes(PlazaGeometry geometry,
-            PlazaMovement movement, PlazaStyle style)
+        private static bool GrowToFit(Context context, RoomRequest request,
+            ref PlazaShape shape, float aspect)
         {
-            yield return geometry.MajorAxis;
-            // Arms of L- and U-shaped plots run along either box axis.
-            yield return geometry.MinorAxis;
-            if (style == PlazaStyle.Classic || style == PlazaStyle.Promenade) yield break;
-            // A sequence of rooms follows the rooms' own axes; only the
-            // modern style turns its plaza freely.
-            if (style == PlazaStyle.Modern)
-            {
-                yield return Rotate(geometry.MajorAxis, math.radians(30f));
-                yield return Rotate(geometry.MajorAxis, math.radians(-30f));
-            }
-            if (style == PlazaStyle.Modern && movement.DesireLines.Count > 0)
-            {
-                var line = movement.DesireLines[StrongestDesireLine(movement)];
-                var direction = math.normalizesafe(line[line.Count - 1] - line[0]);
-                if (math.lengthsq(direction) > 0.5f) yield return direction;
-            }
-        }
-
-        private static IEnumerable<float2> CandidateCentres(PlazaGeometry geometry,
-            PlazaMovement movement, PlazaStyle style)
-        {
-            var centres = new List<float2>();
-            void Add(float2 point)
-            {
-                if (!geometry.Contains(point)) return;
-                for (var i = 0; i < centres.Count; i++)
-                    if (math.distancesq(centres[i], point) < 1f) return;
-                centres.Add(point);
-            }
-            switch (style)
-            {
-                case PlazaStyle.Classic:
-                case PlazaStyle.Promenade:
-                    // Ordered compositions sit on the plot's own centre lines.
-                    Add(geometry.BoxCenter);
-                    Add(geometry.Centroid);
-                    Add(geometry.Pole);
-                    break;
-                case PlazaStyle.Sequence:
-                    foreach (var room in geometry.RoomCentres(
-                                 geometry.MaximumDistance * 0.45f,
-                                 geometry.MaximumDistance * 1.5f))
-                    {
-                        Add(room);
-                        if (centres.Count >= 2) break;
-                    }
-                    Add(geometry.Pole);
-                    break;
-                default:
-                    Add(geometry.Pole);
-                    Add(geometry.Centroid);
-                    // Golden-section points along the main axis.
-                    var offset = geometry.MajorAxis * (geometry.MajorSpan * 0.12f);
-                    Add(geometry.Pole + offset);
-                    Add(geometry.Pole - offset);
-                    // Shifted towards where people walk.
-                    var pull = float2.zero;
-                    for (var i = 0; i < movement.Entrances.Count; i++)
-                        pull += movement.Entrances[i];
-                    if (movement.Entrances.Count > 0)
-                        Add(math.lerp(geometry.Pole, pull / movement.Entrances.Count, 0.2f));
-                    break;
-            }
-            // Centres of the plot's rooms, e.g. the middle of each arm.
-            var rooms = geometry.RoomCentres(geometry.MaximumDistance * 0.6f,
-                geometry.MaximumDistance);
-            for (var i = 0; i < rooms.Count && i < 3; i++) Add(rooms[i]);
-            return centres;
-        }
-
-        private static IEnumerable<float> CandidateAspects(PlazaGeometry geometry,
-            PlazaStyle style, PlazaCoreShape kind)
-        {
-            // Polygon-based kinds keep the template's own proportions.
-            if (kind == PlazaCoreShape.BoundaryAligned
-                || kind == PlazaCoreShape.ConvexPolygon)
-            {
-                yield return 1f;
-                yield break;
-            }
-            var plot = math.clamp(geometry.MinorSpan / math.max(1f, geometry.MajorSpan),
-                0.15f, 1f);
-            switch (style)
-            {
-                case PlazaStyle.Promenade:
-                    // A long, comparatively narrow promenade space.
-                    yield return math.max(0.18f, plot * 0.6f);
-                    yield return math.max(0.22f, plot * 0.8f);
-                    break;
-                case PlazaStyle.Classic:
-                    yield return plot;
-                    if (plot > 0.7f) yield return 1f;
-                    // Concave plots: the plot's box says little about its
-                    // rooms, so try calm proportions for one arm or room.
-                    if (geometry.Convexity < 0.9f)
-                    {
-                        yield return 0.35f;
-                        yield return 0.55f;
-                        yield return 0.8f;
-                        if (plot <= 0.7f) yield return 1f;
-                    }
-                    break;
-                default:
-                    yield return plot;
-                    yield return math.min(1f, plot * 1.3f);
-                    yield return math.max(0.35f, plot * 0.75f);
-                    if (geometry.Convexity < 0.9f)
-                    {
-                        yield return 0.4f;
-                        yield return 0.8f;
-                    }
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Grows a shape around its centre until it would leave the polygon
-        /// with the given rim, then shrinks it to the target share.
-        /// </summary>
-        private static bool GrowToFit(PlazaGeometry geometry, ref PlazaShape shape,
-            float aspect, float rim, float targetShare)
-        {
-            float low = 0f, high;
             var polygonBased = shape.Kind == PlazaCoreShape.BoundaryAligned
                 || shape.Kind == PlazaCoreShape.ConvexPolygon;
-            high = polygonBased ? 1f : geometry.MajorSpan * 0.5f;
+            float low = 0f, high = polygonBased ? 1f : context.Geometry.MajorSpan * 0.5f;
             for (var step = 0; step < 14; step++)
             {
                 var middle = (low + high) * 0.5f;
-                Apply(ref shape, middle, aspect, polygonBased);
-                if (Fits(geometry, shape, rim)) low = middle;
+                Resize(ref shape, middle, aspect, polygonBased);
+                if (Fits(context, request, shape)) low = middle;
                 else high = middle;
             }
             if (low <= 0.001f) return false;
-            Apply(ref shape, low, aspect, polygonBased);
+            Resize(ref shape, low, aspect, polygonBased);
             var area = PlazaShape.Area(shape.Outline());
-            var target = geometry.Area * targetShare;
-            if (area > target)
-                Apply(ref shape, low * math.sqrt(target / area), aspect, polygonBased);
+            if (area > request.TargetArea)
+                Resize(ref shape, low * math.sqrt(request.TargetArea / area), aspect,
+                    polygonBased);
             return true;
         }
 
-        private static void Apply(ref PlazaShape shape, float size, float aspect,
+        private static void Resize(ref PlazaShape shape, float size, float aspect,
             bool polygonBased)
         {
             if (polygonBased)
@@ -402,30 +407,47 @@ namespace ParkManager.Geometry
             shape.HalfWidth = size * aspect;
         }
 
-        private static bool Fits(PlazaGeometry geometry, PlazaShape shape, float rim)
+        private static bool Fits(Context context, RoomRequest request, PlazaShape shape)
         {
+            var geometry = context.Geometry;
             var outline = shape.Outline();
             if (outline.Count < 3) return false;
-            var rimSquared = rim * rim;
+            var rimSquared = request.Rim * request.Rim;
             var dense = PlazaShape.Densify(outline, math.max(1f, geometry.CellSize * 2f));
             for (var i = 0; i < dense.Count; i++)
-                if (!geometry.Contains(dense[i])
-                    || PolygonMath.DistanceToBoundarySquared(dense[i], geometry.Polygon)
+            {
+                var point = dense[i];
+                if (!geometry.Contains(point)
+                    || PolygonMath.DistanceToBoundarySquared(point, geometry.Polygon)
                         < rimSquared) return false;
+                if (request.Constraint != null && !request.Constraint(point)) return false;
+                for (var r = 0; r < request.Avoid.Count; r++)
+                {
+                    var other = request.Avoid[r];
+                    if (other.Shape.Contains(point, other.Boundary)
+                        || DistanceToOutline(point, other.Boundary) < request.AvoidGap)
+                        return false;
+                }
+            }
             // A notch of a concave outline may reach between outline samples.
             for (var i = 0; i < geometry.Polygon.Count; i++)
                 if (shape.Contains(geometry.Polygon[i], outline)) return false;
+            for (var r = 0; r < request.Avoid.Count; r++)
+                if (shape.Contains(request.Avoid[r].Center, outline)) return false;
             return true;
         }
 
-        private static float ScoreCore(PlazaGeometry geometry, PlazaMovement movement,
-            PlazaStyle style, PlazaShape shape, List<float2> outline, float area,
-            float targetShare)
+        /// <summary>
+        /// Generic room quality: free centre, visible from the entrances,
+        /// on the walking lines, close to the intended size.
+        /// </summary>
+        private static float ScoreRoom(Context context, PlazaShape shape,
+            List<float2> outline, float area, float targetArea)
         {
-            // D: how free the centre is from the boundary.
+            var geometry = context.Geometry;
+            var movement = context.Movement;
             var free = geometry.DistanceToBoundary(shape.Center)
                 / math.max(0.1f, geometry.MaximumDistance);
-            // V: share of the plaza outline seen from the entrances.
             var visible = 1f;
             if (movement.Entrances.Count > 0)
             {
@@ -439,42 +461,34 @@ namespace ParkManager.Geometry
                 }
                 visible = samples > 0 ? (float)seen / samples : 1f;
             }
-            // R: movement crossing the plaza makes it the natural hub.
-            var relation = 0f;
-            var count = 0;
+            var relation = movement.At(shape.Center);
+            var count = 1;
             for (var i = 0; i < outline.Count; i += math.max(1, outline.Count / 16))
             {
                 relation += movement.At(math.lerp(shape.Center, outline[i], 0.5f));
                 count++;
             }
-            relation = count > 0 ? relation / count : 0f;
-            relation = math.max(relation, movement.At(shape.Center));
-            // A: closeness to the intended share of open plaza.
-            var share = area / math.max(1f, geometry.Area);
-            var areaFit = math.saturate(1f - math.abs(share - targetShare) / targetShare);
-            var score = 0.40f * free + 0.25f * visible + 0.20f * relation + 0.15f * areaFit;
+            relation /= count;
+            var areaFit = math.saturate(1f - math.abs(area - targetArea)
+                / math.max(1f, targetArea));
+            return 0.40f * free + 0.25f * visible + 0.20f * relation + 0.15f * areaFit;
+        }
 
-            switch (style)
-            {
-                case PlazaStyle.Classic:
-                    // Symmetry: sit on the plot's centre and follow its axis.
-                    var offset = math.distance(shape.Center, geometry.BoxCenter)
-                        / math.max(1f, geometry.MinorSpan * 0.5f);
-                    score += 0.15f * (1f - math.saturate(offset))
-                        + 0.05f * math.abs(math.dot(shape.Axis, geometry.MajorAxis));
-                    break;
-                case PlazaStyle.Promenade:
-                    var length = shape.HalfLength * 2f / math.max(1f, geometry.MajorSpan);
-                    score += 0.2f * math.saturate(length);
-                    break;
-                case PlazaStyle.Modern:
-                    // Controlled asymmetry: slightly off the plot's centre.
-                    var shift = math.distance(shape.Center, geometry.BoxCenter)
-                        / math.max(1f, geometry.MinorSpan);
-                    score += 0.08f * math.saturate(1f - math.abs(shift - 0.15f) / 0.15f);
-                    break;
-            }
-            return score;
+        internal static float2 Rotate(float2 direction, float angle)
+        {
+            var c = math.cos(angle);
+            var s = math.sin(angle);
+            return new float2(direction.x * c - direction.y * s,
+                direction.x * s + direction.y * c);
+        }
+
+        internal static float DistanceToOutline(float2 point, IReadOnlyList<float2> outline)
+        {
+            var best = float.MaxValue;
+            for (var i = 0; i < outline.Count; i++)
+                best = math.min(best, PolygonMath.DistanceToSegmentSquared(point,
+                    outline[i], outline[(i + 1) % outline.Count]));
+            return math.sqrt(best);
         }
 
         private static int StrongestDesireLine(PlazaMovement movement)
@@ -492,12 +506,32 @@ namespace ParkManager.Geometry
             return best;
         }
 
-        internal static float2 Rotate(float2 direction, float angle)
+        /// <summary>True when the point lies in any room or within gap of it.</summary>
+        private static bool InsideAnyRoom(Context context, float2 point, float gap,
+            bool includePassages = true)
         {
-            var c = math.cos(angle);
-            var s = math.sin(angle);
-            return new float2(direction.x * c - direction.y * s,
-                direction.x * s + direction.y * c);
+            foreach (var room in context.Design.Rooms)
+            {
+                if (!includePassages && room.Role == PlazaRoomRole.Passage) continue;
+                if (room.Shape.Contains(point, room.Boundary)) return true;
+                if (gap > 0f && DistanceToOutline(point, room.Boundary) < gap) return true;
+            }
+            return false;
+        }
+
+        private static bool NearCorridor(Context context, float2 point, float extra)
+        {
+            foreach (var corridor in context.Design.MovementCorridors)
+                if (PlazaMovement.DistanceToPolyline(point, corridor.Points)
+                    < corridor.Width * 0.5f + extra) return true;
+            return false;
+        }
+
+        private static bool NearEntrance(Context context, float2 point, float radius)
+        {
+            foreach (var entrance in context.Movement.Entrances)
+                if (math.distance(point, entrance) < radius) return true;
+            return false;
         }
     }
 }

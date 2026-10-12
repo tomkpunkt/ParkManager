@@ -1,86 +1,109 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Plaza-Entwürfe – Phase 1</title>
+<title>Plaza-Entwürfe – Phase 1.5</title>
 <style>
 body{margin:0;background:#1b2622;color:#e9f1ec;font:13px/1.4 Arial,sans-serif}
-header{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:10px 16px;background:#0f1916;border-bottom:1px solid #35504a}
+header{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;background:#0f1916;border-bottom:1px solid #35504a}
 header h1{margin:0;font-size:16px}
-.legend{display:flex;flex-wrap:wrap;gap:12px}
-.legend span{display:flex;align-items:center;gap:5px}
-.legend i{display:inline-block;width:14px;height:14px;border-radius:3px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend i{display:inline-block;width:13px;height:13px;border-radius:3px}
 label{display:flex;align-items:center;gap:5px;cursor:pointer}
 table{border-collapse:collapse;margin:10px}
-th{position:sticky;top:46px;background:#1b2622;padding:6px;font-weight:bold;z-index:1}
+th{position:sticky;top:58px;background:#1b2622;padding:6px;font-weight:bold;z-index:1}
 td{padding:6px;vertical-align:top}
-td.name{max-width:120px;font-weight:bold}
-.card{width:230px;background:#24332e;border:1px solid #3b5550;border-radius:6px;padding:6px}
+td.name{max-width:110px;font-weight:bold}
+.card{width:236px;background:#24332e;border:1px solid #3b5550;border-radius:6px;padding:6px}
 .card.fail{border-color:#e97868}
-.card svg{width:218px;height:218px;background:#203029;border-radius:4px}
+.card svg{width:224px;height:224px;background:#203029;border-radius:4px}
 .meta{margin-top:4px;color:#b8cbc3;font-size:11px}
 .meta b{color:#fff}
+.scores{display:flex;gap:3px;margin-top:3px}
+.scores span{flex:1;text-align:center;border-radius:3px;font-size:10px;padding:1px 0;color:#0f1916}
 .err{color:#ff9b8a;font-size:11px}
 </style></head>
 <body>
 <header>
-  <h1>Plaza-Entwürfe · Phase 1</h1>
-  <div class="legend">
-    <span><i style="background:#cfc6b3"></i>befestigt</span>
-    <span><i style="background:#ece2c8;outline:2px solid #fff6dc"></i>Hauptplatz</span>
-    <span><i style="background:#e2d5b5"></i>Nebenraum</span>
-    <span><i style="background:#6aa75a"></i>Grünzone</span>
-    <span><i style="background:#2f6b38;border-radius:7px"></i>Baumreihe</span>
-    <span><i style="background:#e0893a"></i>Sitzzone</span>
-    <span><i style="background:#d9474b;border-radius:7px"></i>Fokuspunkt</span>
-    <span><i style="background:#4b8fd6"></i>Achse</span>
-    <span><i style="background:#8c5a2b"></i>Korridor</span>
-  </div>
+  <h1>Plaza-Entwürfe · Phase 1.5</h1>
+  <label><input type="checkbox" id="graph">Raumgraph</label>
+  <label><input type="checkbox" id="surface" checked>Oberflächen &amp; Raumkanten</label>
   <label><input type="checkbox" id="intent" checked>Gestaltungsabsicht</label>
-  <label><input type="checkbox" id="movement">Korridore & Achsen</label>
+  <div class="legend">
+    <span><i style="background:#d8cfbb"></i>Pflaster</span>
+    <span><i style="background:#ece2c8;outline:2px solid #fff6dc"></i>Hauptplatz</span>
+    <span><i style="background:#6aa75a"></i>Grün</span>
+    <span><i style="background:#86c06d"></i>Parterre/Insel</span>
+    <span><i style="background:#2f6b38;border-radius:7px"></i>Baum</span>
+    <span><i style="background:#e0893a"></i>Sitzen</span>
+    <span><i style="background:#d9474b;border-radius:7px"></i>Fokus</span>
+    <span>Kanten: <i style="background:#2f6b38"></i>Bäume <i style="background:#5fbf4a"></i>Grün <i style="background:#e0893a"></i>Sitzen <i style="background:#7d7d8a"></i>Bau <i style="background:#5cc9fa"></i>offen</span>
+  </div>
   <span id="summary"></span>
 </header>
 <table id="grid"></table>
 <script>
-const styles = ['Auto', 'Classic', 'Modern', 'Promenade', 'Sequence'];
-const names = { Auto: 'Auto', Classic: 'Klassisch', Modern: 'Modern',
-  Promenade: 'Promenade', Sequence: 'Raumfolge' };
+const styles = ['Auto', 'Classic', 'Modern', 'Natural', 'Promenade', 'Sequence'];
+const names = { Auto: 'Auto', Classic: 'Klassisch', Modern: 'Modern', Promenade: 'Promenade',
+  Sequence: 'Raumfolge', Central: 'Zentralplatz', Linear: 'Linear', Natural: 'Natürlich' };
+const roleColor = { MainSquare: '#e8b04a', SecondarySquare: '#8fb8de', EntranceCourt: '#b58fde',
+  Passage: '#9aa0a6', GardenCourt: '#6fc27a' };
+const edgeColor = { TreeRow: '#2f6b38', GreenBorder: '#5fbf4a', SeatingEdge: '#e0893a',
+  ArchitecturalEdge: '#7d7d8a', Open: '#5cc9fa' };
 const pts = (list) => list.map((p) => `${p.x},${p.y}`).join(' ');
 let data = null;
 
 function svg(c) {
-  const all = c.polygon;
-  const xs = all.map((p) => p.x), ys = all.map((p) => p.y);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const size = Math.max(maxX - minX, maxY - minY) * 1.08;
-  const pad = size * 0.04;
+  const xs = c.polygon.map((p) => p.x), ys = c.polygon.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const size = Math.max(maxX - minX, maxY - minY) * 1.08, pad = size * 0.04, u = size / 220;
   const d = c.design;
-  const showIntent = document.getElementById('intent').checked;
-  const showMovement = document.getElementById('movement').checked;
-  // World y up: flip into SVG space.
-  const view = `${minX - pad} ${-(minY + size - pad)} ${size} ${size}`;
-  let s = `<svg viewBox="${view}"><g transform="scale(1,-1)">`;
-  s += `<polygon points="${pts(c.polygon)}" fill="#cfc6b3" stroke="#f4efe2" stroke-width="${size / 220}"/>`;
-  for (const z of d.greenZones) s += `<polygon points="${pts(z)}" fill="#6aa75a" stroke="#4f8a43" stroke-width="${size / 400}"/>`;
-  for (const z of d.secondarySpaces) s += `<polygon points="${pts(z)}" fill="#e2d5b5" stroke="#fff6dc" stroke-width="${size / 300}"/>`;
-  if (d.mainPlaza.length) s += `<polygon points="${pts(d.mainPlaza)}" fill="#ece2c8" stroke="#fff6dc" stroke-width="${size / 160}"/>`;
-  if (showIntent) {
-    for (const z of d.furnitureZones) if (z.kind === 'EdgeSeating')
-      s += `<polygon points="${pts(z.polygon)}" fill="#e0893a" fill-opacity="0.75"/>`;
-    for (const r of d.treeRows) for (const p of r.points)
-      s += `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(1.4, r.spacing * 0.32)}" fill="#2f6b38" stroke="#1d4424" stroke-width="${size / 500}"/>`;
+  const graph = document.getElementById('graph').checked;
+  const surface = document.getElementById('surface').checked;
+  const intent = document.getElementById('intent').checked;
+  let s = `<svg viewBox="${minX - pad} ${-(minY + size - pad)} ${size} ${size}"><g transform="scale(1,-1)">`;
+  s += `<polygon points="${pts(c.polygon)}" fill="${surface ? '#d8cfbb' : '#2c3d37'}" stroke="#f4efe2" stroke-width="${u}"/>`;
+  if (surface) {
+    for (const r of d.rooms) if (r.role !== 'Passage')
+      s += `<polygon points="${pts(r.boundary)}" fill="${r.role === 'MainSquare' ? '#ece2c8' : '#e4d8bd'}" stroke="#fff6dc" stroke-width="${u * (r.role === 'MainSquare' ? 1.4 : 0.8)}"/>`;
+    for (const z of d.greenZones)
+      s += `<polygon points="${pts(z.polygon)}" fill="${z.kind === 'Parterre' || z.kind === 'Island' ? '#86c06d' : '#6aa75a'}" stroke="#4f8a43" stroke-width="${u * 0.5}"/>`;
+    for (const r of d.rooms) for (const e of r.edges)
+      s += `<polyline points="${pts(e.points)}" fill="none" stroke="${edgeColor[e.role]}" stroke-width="${u * 2.2}" stroke-linecap="round" stroke-opacity="0.9"/>`;
   }
-  if (showMovement) {
+  if (graph) {
+    for (const r of d.rooms)
+      s += `<polygon points="${pts(r.boundary)}" fill="${roleColor[r.role]}" fill-opacity="${0.25 + r.importance * 0.5}" stroke="${roleColor[r.role]}" stroke-width="${u}"/>`;
+    d.rooms.forEach((r, i) => r.connected.forEach((j) => { if (j > i) {
+      const o = d.rooms[j].center;
+      s += `<line x1="${r.center.x}" y1="${r.center.y}" x2="${o.x}" y2="${o.y}" stroke="#fff" stroke-width="${u * 1.2}" stroke-dasharray="${u * 3} ${u * 2}"/>`; } }));
+    for (const r of d.rooms)
+      s += `<circle cx="${r.center.x}" cy="${r.center.y}" r="${u * (2 + r.importance * 4)}" fill="${roleColor[r.role]}" stroke="#fff" stroke-width="${u * 0.6}"/>`;
     for (const k of d.corridors) if (k.points.length > 1)
-      s += `<polyline points="${pts(k.points)}" fill="none" stroke="#8c5a2b" stroke-opacity="0.55" stroke-linecap="round" stroke-width="${k.width}"/>`;
-    for (const a of d.axes)
-      s += `<line x1="${a.ax}" y1="${a.ay}" x2="${a.bx}" y2="${a.by}" stroke="#4b8fd6" stroke-width="${size / (a.primary ? 260 : 420)}" stroke-dasharray="${size / 60} ${size / 90}"/>`;
+      s += `<polyline points="${pts(k.points)}" fill="none" stroke="#8c5a2b" stroke-opacity="0.6" stroke-linecap="round" stroke-width="${k.width}"/>`;
   }
-  for (const f of d.focalPoints)
-    s += `<circle cx="${f.x}" cy="${f.y}" r="${f.kind === 'Primary' ? size / 45 : size / 70}" fill="#d9474b" stroke="#fff" stroke-width="${size / 400}"/>`;
+  if (intent) {
+    for (const z of d.furnitureZones) if (z.kind === 'EdgeSeating')
+      s += `<polygon points="${pts(z.polygon)}" fill="#e0893a" fill-opacity="0.8"/>`;
+    for (const g of d.treeGroups) {
+      const cx = g.reduce((a, p) => a + p.x, 0) / g.length, cy = g.reduce((a, p) => a + p.y, 0) / g.length;
+      for (let k = 0; k < 3; k++) s += `<circle cx="${cx + (k - 1) * size / 60}" cy="${cy + (k % 2) * size / 80}" r="${size / 60}" fill="#2f6b38" stroke="#1d4424" stroke-width="${u * 0.4}"/>`;
+    }
+    for (const r of d.treeRows) for (const p of r.points)
+      s += `<circle cx="${p.x}" cy="${p.y}" r="${Math.max(1.3, r.spacing * 0.3)}" fill="#2f6b38" stroke="#1d4424" stroke-width="${u * 0.4}"/>`;
+    for (const a of d.axes)
+      s += `<line x1="${a.ax}" y1="${a.ay}" x2="${a.bx}" y2="${a.by}" stroke="#4b8fd6" stroke-width="${u * (a.primary ? 0.9 : 0.5)}" stroke-dasharray="${u * 4} ${u * 3}"/>`;
+    for (const f of d.focalPoints)
+      s += `<circle cx="${f.x}" cy="${f.y}" r="${u * (f.kind === 'Primary' ? 5 : 3.2)}" fill="#d9474b" stroke="#fff" stroke-width="${u * 0.6}"/>`;
+  }
   for (const e of c.entrances)
-    s += `<circle cx="${e.x}" cy="${e.y}" r="${size / 70}" fill="#5cc9fa" stroke="#fff" stroke-width="${size / 400}"/>`;
+    s += `<circle cx="${e.x}" cy="${e.y}" r="${u * 3}" fill="#5cc9fa" stroke="#fff" stroke-width="${u * 0.6}"/>`;
   return s + '</g></svg>';
+}
+
+function score(label, value) {
+  const hue = Math.round(value * 110);
+  return `<span title="${label}" style="background:hsl(${hue},55%,62%)">${label} ${(value * 100).toFixed(0)}</span>`;
 }
 
 function render() {
@@ -95,22 +118,22 @@ function render() {
     for (const style of styles) {
       const c = byStyle[style];
       if (!c) { html += '<td></td>'; continue; }
-      const m = c.design.metrics;
-      const fell = c.requested !== 'Auto' && c.design.style !== c.requested;
-      html += `<td><div class="card ${c.errors.length ? 'fail' : ''}" data-case="${name}" data-style="${style}">${svg(c)}
-        <div class="meta"><b>${names[c.design.style] || c.design.style}</b>${fell ? ' (Ersatz)' : ''} · ${c.design.coreShape}<br>
-        Platz ${(m.mainShare * 100).toFixed(0)} % · Grün ${(m.greenShare * 100).toFixed(0)} % · Breite ${m.minimumWidth.toFixed(0)} m · ${m.milliseconds.toFixed(0)} ms</div>
+      const d = c.design, m = d.metrics, sc = m.scores;
+      html += `<td><div class="card ${c.errors.length ? 'fail' : ''}">${svg(c)}
+        <div class="meta"><b>${names[d.topology] || d.topology}</b> · <b>${names[d.grammar] || d.grammar}</b> · ${d.rooms.length} Räume<br>
+        Platz ${(m.mainShare * 100).toFixed(0)} % · Räume ${(m.roomShare * 100).toFixed(0)} % · Grün ${(m.greenShare * 100).toFixed(0)} % · ${m.milliseconds.toFixed(0)} ms</div>
+        <div class="scores">${score('H', sc.hierarchy)}${score('G', sc.green)}${score('K', sc.edges)}${score('S', sc.identity)}${score('E', sc.entrances)}</div>
         ${c.errors.map((e) => `<div class="err">${e}</div>`).join('')}</div></td>`;
     }
     html += '</tr>';
   }
   document.getElementById('grid').innerHTML = html;
   document.getElementById('summary').textContent =
-    `${data.count} Entwürfe · Ø ${data.averageMs.toFixed(0)} ms · max ${data.maximumMs.toFixed(0)} ms`;
+    `${data.count} Entwürfe · Ø ${data.averageMs.toFixed(0)} ms · max ${data.maximumMs.toFixed(0)} ms · H Hierarchie, G Grün, K Kanten, S Stil, E Eingänge`;
 }
 
 fetch('/api/plaza-designs').then((r) => r.json()).then((json) => { data = json; render(); });
-for (const id of ['intent', 'movement'])
+for (const id of ['graph', 'surface', 'intent'])
   document.getElementById(id).addEventListener('change', () => data && render());
 </script>
 </body></html>

@@ -478,7 +478,7 @@ test('the phase-1 plaza design overlays the drawn outline', async ({ page }) => 
 
 test('the design gallery renders every case without rule violations', async ({ page }) => {
   await page.goto('/designs.html');
-  await expect(page.locator('.card')).toHaveCount(100, { timeout: 30_000 });
+  await expect(page.locator('.card')).toHaveCount(120, { timeout: 30_000 });
   await expect(page.locator('.card.fail')).toHaveCount(0);
   await expect(page.locator('.err')).toHaveCount(0);
 });

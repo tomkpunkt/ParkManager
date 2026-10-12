@@ -68,7 +68,7 @@ internal static class PlazaDesignTests
 
     internal static object Run(List<string> failures)
     {
-        var styles = new[] { PlazaStyle.Auto, PlazaStyle.Classic, PlazaStyle.Modern,
+        var styles = new[] { PlazaStyle.Auto, PlazaStyle.Classic, PlazaStyle.Modern, PlazaStyle.Natural,
             PlazaStyle.Promenade, PlazaStyle.Sequence };
         var results = new List<object>();
         var times = new List<double>();
@@ -98,6 +98,12 @@ internal static class PlazaDesignTests
             averageMs = times.Average(), maximumMs = times.Max() };
     }
 
+    private static readonly Dictionary<PlazaGrammar, float> GreenMaximum = new()
+    {
+        [PlazaGrammar.Classic] = 0.3f, [PlazaGrammar.Modern] = 0.35f,
+        [PlazaGrammar.Natural] = 0.45f,
+    };
+
     private static List<string> Check(Case testCase, PlazaDesign design)
     {
         var errors = new List<string>();
@@ -109,49 +115,103 @@ internal static class PlazaDesignTests
         }
         var area = Math.Abs(PolygonMath.SignedArea(polygon));
         var main = design.MainPlaza;
+        var rooms = design.Rooms;
 
-        // The main plaza lies inside the plot as one coherent shape.
-        foreach (var point in Densify(main, 1f))
-            if (!PolygonMath.PointInsideOrBoundary(point, polygon, 0.05f))
-            {
-                errors.Add("main plaza leaves the outline");
-                break;
-            }
-        if (polygon.Any(vertex => PolygonMath.PointInside(vertex, main)))
-            errors.Add("outline notch inside the main plaza");
-        if (design.Metrics.MainPlazaArea < area * 0.12)
-            errors.Add($"main plaza too small ({design.Metrics.MainPlazaArea / area:P0})");
+        // The preset decides what it promises.
+        if (design.RequestedStyle == PlazaStyle.Classic && design.Grammar != PlazaGrammar.Classic)
+            errors.Add("classic preset without classic grammar");
+        if (design.RequestedStyle == PlazaStyle.Natural && design.Grammar != PlazaGrammar.Natural)
+            errors.Add("natural style without natural grammar");
+        if (design.RequestedStyle == PlazaStyle.Modern && design.Grammar != PlazaGrammar.Modern)
+            errors.Add("modern preset without modern grammar");
+        // A small plot keeps a reduced design instead of a sequence.
+        if (design.RequestedStyle == PlazaStyle.Sequence && design.Topology != PlazaTopology.Sequence
+            && Math.Abs(PolygonMath.SignedArea(polygon)) >= 1200.0)
+            errors.Add("sequence preset without a sequence of rooms");
+
+        // Rooms lie inside the plot; the main square leads the hierarchy.
+        foreach (var room in rooms)
+        {
+            foreach (var point in Densify(room.Boundary, 1f))
+                if (!PolygonMath.PointInsideOrBoundary(point, polygon, 0.05f))
+                {
+                    errors.Add($"{room.Role} leaves the outline");
+                    break;
+                }
+            if (room.Role != PlazaRoomRole.Passage
+                && polygon.Any(vertex => PolygonMath.PointInside(vertex, room.Boundary)))
+                errors.Add($"outline notch inside {room.Role}");
+            if (room != rooms[0] && room.Importance >= rooms[0].Importance)
+                errors.Add("main square is not the most important room");
+        }
+        var squares = rooms.Where(r => r.Role is PlazaRoomRole.MainSquare
+            or PlazaRoomRole.SecondarySquare or PlazaRoomRole.GardenCourt).ToList();
+        if (squares.Any(r => PolygonMath.SignedArea(r.Boundary) > PolygonMath.SignedArea(main) + 1.0))
+            errors.Add("a secondary room is larger than the main square");
+        if (design.Topology == PlazaTopology.Sequence && squares.Count < 2)
+            errors.Add("sequence with a single room");
+        if (design.Topology == PlazaTopology.Linear)
+        {
+            // Exact extents in the room's own frame.
+            var axis = rooms[0].Axis;
+            var normal = new float2(-axis.y, axis.x);
+            var points = Densify(main, 1f).ToList();
+            var length = points.Max(p => math.dot(p, axis)) - points.Min(p => math.dot(p, axis));
+            var width = points.Max(p => math.dot(p, normal)) - points.Min(p => math.dot(p, normal));
+            if (length < width * 2.4f) errors.Add("linear space is not linear");
+        }
+        if (design.Metrics.MainPlazaArea < area * (design.Topology == PlazaTopology.Central
+                ? 0.15 : 0.08))
+            errors.Add($"main square too small ({design.Metrics.MainPlazaArea / area:P0})");
         if (design.Metrics.MainPlazaMinimumWidth < 5.9f)
-            errors.Add($"main plaza too narrow ({design.Metrics.MainPlazaMinimumWidth:F1} m)");
+            errors.Add($"main square too narrow ({design.Metrics.MainPlazaMinimumWidth:F1} m)");
+        if (rooms[0].Edges.Count == 0) errors.Add("main square without edge roles");
 
-        // Green zones never cut into the main plaza and are simple polygons.
+        // Green is designed and budgeted; the open square stays coherent.
+        var greenShare = design.Metrics.GreenArea / area;
+        if (greenShare > GreenMaximum[design.Grammar] + 0.02f)
+            errors.Add($"too much green ({greenShare:P0})");
         foreach (var zone in design.GreenZones)
         {
-            if (!PlazaComposer.IsSimple(zone)) errors.Add("green zone self-intersects");
-            if (zone.Any(point => !PolygonMath.PointInsideOrBoundary(point, polygon, 0.1f)))
+            var points = zone.Polygon;
+            if (!PlazaComposer.IsSimple(points)) errors.Add("green zone self-intersects");
+            if (points.Any(p => !PolygonMath.PointInsideOrBoundary(p, polygon, 0.1f)))
                 errors.Add("green zone leaves the outline");
-            if (zone.Any(point => PolygonMath.PointInside(point, main)))
-                errors.Add("green zone inside the main plaza");
-        }
-        foreach (var point in Densify(main, 1f))
-            if (design.GreenZones.Any(zone => PolygonMath.PointInside(point, zone)))
+            var inner = zone.Kind is PlazaGreenKind.Parterre or PlazaGreenKind.Island
+                || zone.Kind == PlazaGreenKind.Garden && zone.Room == 0
+                    && points.All(p => PolygonMath.PointInside(p, main));
+            foreach (var room in rooms)
             {
-                errors.Add("main plaza fragmented by green");
-                break;
+                if (inner && room == rooms[0]) continue;
+                if (points.Any(p => PolygonMath.PointInside(p, room.Boundary)))
+                {
+                    errors.Add($"green inside {room.Role}");
+                    break;
+                }
             }
+            if (inner && !points.All(p => PolygonMath.PointInside(p, main)))
+                errors.Add("inner bed leaves the main square");
+        }
+        if (!OpenSquareConnected(design)) errors.Add("open main square is fragmented");
+        if (design.FocalPoints.Count == 0
+            || !PolygonMath.PointInside(design.FocalPoints[0].Position, main)
+            || design.GreenZones.Any(z => PolygonMath.PointInside(design.FocalPoints[0].Position, z.Polygon)))
+            errors.Add("primary focal point not on the open main square");
 
-        // Every entrance is opened up to the main plaza, through no green.
+        // Every entrance is opened up into a room, through no green.
         var entranceCorridors = design.MovementCorridors.Count(c => c.Entrance >= 0);
         if (entranceCorridors != testCase.Entrances.Count)
             errors.Add($"{entranceCorridors} corridors for {testCase.Entrances.Count} entrances");
         foreach (var corridor in design.MovementCorridors)
         {
             var end = corridor.Points[corridor.Points.Count - 1];
-            if (corridor.Entrance >= 0 && !PolygonMath.PointInside(end, main)
-                && PlazaComposer.DistanceToOutline(end, main) > 0.6f)
-                errors.Add("corridor does not reach the main plaza");
+            if (corridor.Entrance >= 0 && corridor.Points.Count > 1
+                && math.distance(corridor.Points[0], end) > 0.01f
+                && !rooms.Any(r => PolygonMath.PointInside(end, r.Boundary)
+                    || PlazaComposer.DistanceToOutline(end, r.Boundary) <= 0.6f))
+                errors.Add("corridor does not reach a room");
             foreach (var point in Densify(corridor.Points, 0.5f, false))
-                if (design.GreenZones.Any(zone => PolygonMath.PointInside(point, zone)))
+                if (design.GreenZones.Any(zone => PolygonMath.PointInside(point, zone.Polygon)))
                 {
                     errors.Add("corridor blocked by green");
                     break;
@@ -163,17 +223,61 @@ internal static class PlazaDesignTests
             for (var i = 0; i < row.Count; i++)
             {
                 var point = math.lerp(row.Start, row.End, row.Count > 1 ? i / (row.Count - 1f) : 0f);
-                if (!PolygonMath.PointInside(point, polygon)
-                    || PolygonMath.PointInside(point, main))
+                if (!PolygonMath.PointInside(point, polygon))
                 {
-                    errors.Add("tree row point outside the rim");
+                    errors.Add("tree outside the outline");
                     break;
                 }
             }
-        if (design.FocalPoints.Count == 0
-            || !PolygonMath.PointInside(design.FocalPoints[0].Position, main))
-            errors.Add("primary focal point not on the main plaza");
         return errors.Distinct().ToList();
+    }
+
+    /// <summary>The main square minus its inner beds is one connected area.</summary>
+    private static bool OpenSquareConnected(PlazaDesign design)
+    {
+        var main = design.MainPlaza;
+        PolygonMath.Bounds(main, out var min, out var max);
+        const float step = 1f;
+        var columns = (int)Math.Ceiling((max.x - min.x) / step) + 1;
+        var rows = (int)Math.Ceiling((max.y - min.y) / step) + 1;
+        var open = new bool[columns * rows];
+        var count = 0;
+        var first = -1;
+        for (var y = 0; y < rows; y++)
+        for (var x = 0; x < columns; x++)
+        {
+            var point = min + new float2(x, y) * step;
+            if (!PolygonMath.PointInside(point, main)
+                || design.GreenZones.Any(z => PolygonMath.PointInside(point, z.Polygon))) continue;
+            open[y * columns + x] = true;
+            count++;
+            if (first < 0) first = y * columns + x;
+        }
+        if (first < 0) return false;
+        var seen = new bool[open.Length];
+        var queue = new Queue<int>();
+        queue.Enqueue(first);
+        seen[first] = true;
+        var reached = 0;
+        while (queue.Count > 0)
+        {
+            var index = queue.Dequeue();
+            reached++;
+            var cx = index % columns;
+            var cy = index / columns;
+            foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                var nx = cx + dx;
+                var ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= columns || ny >= rows) continue;
+                var next = ny * columns + nx;
+                if (!open[next] || seen[next]) continue;
+                seen[next] = true;
+                queue.Enqueue(next);
+            }
+        }
+        // Grid aliasing along thin diagonal outlines may cut off single cells.
+        return reached >= count * 0.98f;
     }
 
     private static string Serialize(PlazaDesign design)

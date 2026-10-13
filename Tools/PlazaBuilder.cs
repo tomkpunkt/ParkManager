@@ -143,6 +143,8 @@ namespace ParkManager.Tools
         /// </summary>
         private PlazaPlan PlanPlaza(out bool useCenter, out string centerName)
         {
+            _composedSurfaces = null;
+            _composedSlopeRemoved = 0;
             useCenter = !_plazaNoCenter;
             var centerPrefab = Unity.Entities.Entity.Null;
             centerName = UiText.Of("plaza.noCenter");
@@ -181,6 +183,8 @@ namespace ParkManager.Tools
                 PublishState(UiText.Of("plaza.arrangementDoesNotFit"));
             else if (!useCenter && !_plazaNoCenter)
                 PublishState(UiText.Of("plaza.centerDoesNotFit"));
+            else if (_composedSlopeRemoved > 0)
+                PublishState(UiText.Of("plaza.slopeRemoved", _composedSlopeRemoved));
             else
                 PublishState(UiText.Of("status.plazaRulesApplied",
                     next.Centerpieces.Count, next.Furniture.Count));
@@ -361,9 +365,11 @@ namespace ParkManager.Tools
             _pathPlan = ParkPathPlan.Empty(_plazaSeed);
             GenerateDecorationPlan(_plazaSeed);
             PublishPlazaPlacementSettings();
-            PublishState(UiText.Of("status.plazaDraft", _plazaSeed, centerName,
-                _plazaCenterPlacement.ToString(), _plazaArrangementPlacement.ToString(),
-                plan.Centerpieces.Count, plan.Furniture.Count));
+            PublishState(_composedSlopeRemoved > 0
+                ? UiText.Of("plaza.slopeRemoved", _composedSlopeRemoved)
+                : UiText.Of("status.plazaDraft", _plazaSeed, centerName,
+                    _plazaCenterPlacement.ToString(), _plazaArrangementPlacement.ToString(),
+                    plan.Centerpieces.Count, plan.Furniture.Count));
             PublishPlannerState();
         }
 

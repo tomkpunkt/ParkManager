@@ -879,7 +879,7 @@ namespace ParkManager.Geometry
         }
 
         /// <summary>Douglas–Peucker for a closed loop.</summary>
-        private static List<float2> Simplify(List<float2> loop, float tolerance)
+        internal static List<float2> Simplify(List<float2> loop, float tolerance)
         {
             if (loop.Count < 5) return new List<float2>(loop);
             // Split at the two mutually farthest points for a stable result.

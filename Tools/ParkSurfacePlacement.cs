@@ -9,9 +9,11 @@ namespace ParkManager.Tools
     public sealed partial class ParkToolSystem
     {
         private bool CreatePolygonArea(Entity prefab,
-            ref TerrainHeightData heightData)
+            ref TerrainHeightData heightData,
+            System.Collections.Generic.IReadOnlyList<float2> polygon = null)
         {
-            if (_points.Count < 3) return false;
+            polygon = polygon ?? _points;
+            if (polygon.Count < 3) return false;
             var definition = CreateBuildDefinition();
             EntityManager.AddComponentData(definition, new CreationDefinition
             {
@@ -19,17 +21,17 @@ namespace ParkManager.Tools
             });
             EntityManager.AddComponent<Updated>(definition);
             var nodes = EntityManager.AddBuffer<Game.Areas.Node>(definition);
-            nodes.ResizeUninitialized(_points.Count + 1);
-            for (var i = 0; i < _points.Count; i++)
+            nodes.ResizeUninitialized(polygon.Count + 1);
+            for (var i = 0; i < polygon.Count; i++)
             {
-                var point = _points[i];
+                var point = polygon[i];
                 var height = TerrainUtils.SampleHeight(ref heightData,
                     new float3(point.x, 0f, point.y));
                 if (!math.isfinite(height)) return false;
                 nodes[i] = new Game.Areas.Node(
                     new float3(point.x, height, point.y), float.MinValue);
             }
-            nodes[_points.Count] = nodes[0];
+            nodes[polygon.Count] = nodes[0];
             return true;
         }
 

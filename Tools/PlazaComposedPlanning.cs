@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using ParkManager.Assets;
 using ParkManager.Geometry;
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace ParkManager.Tools
@@ -21,6 +22,18 @@ namespace ParkManager.Tools
         // entrances, style or seed.
         private PlazaDesign _composedDesign;
         private ulong _composedDesignKey;
+        /// <summary>Paving and green of the composed plaza; null for the classic arrangement.</summary>
+        private PlazaSurfacePlan _composedSurfaces;
+        private Entity _plazaGreenPrefab = Entity.Null;
+        private int _expectedPlazaGreenAreas;
+        /// <summary>Objects of the last composed plan left out on steep ground.</summary>
+        private int _composedSlopeRemoved;
+        /// <summary>Most height difference across a centerpiece's footprint.</summary>
+        private const float CenterpieceMaximumRise = 0.5f;
+        /// <summary>Most height difference along a bench, lamp or planter.</summary>
+        private const float FurnitureMaximumRise = 0.4f;
+        private bool _plazaSurfacesComposed;
+        private readonly HashSet<Entity> _plazaGreenBaseline = new HashSet<Entity>();
 
         private PlazaPlan PlanComposedPlaza(bool useCenter, float centerRadius)
         {
@@ -41,8 +54,10 @@ namespace ParkManager.Tools
                     + $"({design.Failure}); using the classic arrangement.");
                 return null;
             }
+            _composedSurfaces = PlazaSurfaceComposer.Compose(_points, design);
             var palette = ComposedPalette(useCenter, centerRadius);
             var furnishing = PlazaFurnisher.Furnish(design, palette, _plazaSeed);
+            var plan = KeepOffSlopes(furnishing.Plan);
             var counts = new Dictionary<PlazaFurnitureKind, int>();
             foreach (var placement in furnishing.Plan.Furniture)
                 counts[placement.Kind] = counts.TryGetValue(placement.Kind, out var count)
@@ -52,12 +67,93 @@ namespace ParkManager.Tools
                 .Append(pair.Key);
             Mod.Log.Info($"ParkManager plaza design {design.RequestedStyle} seed {_plazaSeed}: "
                 + $"{design.Topology}/{design.Grammar}, {design.Rooms.Count} rooms, "
-                + $"{design.GreenZones.Count} green zones, {furnishing.Motifs.Count} motifs;"
+                + $"{design.GreenZones.Count} green zones, {furnishing.Motifs.Count} motifs, "
+                + $"surfaces {_composedSurfaces.Paving.Count} paving + {_composedSurfaces.Green.Count} green;"
                 + $"{summary}, {furnishing.Plan.Centerpieces.Count} centerpiece; "
                 + $"walkable {furnishing.Walkable} (removed {furnishing.RemovedForMovement}); "
                 + $"compose {composeTime:F1} ms{(composeTime == 0.0 ? " (cached)" : "")}, "
                 + $"furnish {furnishing.Milliseconds:F1} ms.");
-            return furnishing.Plan;
+            return plan;
+        }
+
+        /// <summary>
+        /// No terraces or steps yet: on a slope, a fountain or a bench would
+        /// float on one side and sink on the other, so objects whose footprint
+        /// rises too much are left out (trees stand on slopes well). The
+        /// player is told how many.
+        /// </summary>
+        private PlazaPlan KeepOffSlopes(PlazaPlan plan)
+        {
+            _composedSlopeRemoved = 0;
+            var terrain = _terrainSystem.GetHeightData(waitForPending: true);
+            float Rise(float2 center, float radius)
+            {
+                var low = float.MaxValue;
+                var high = float.MinValue;
+                for (var i = 0; i < 8; i++)
+                {
+                    var angle = math.PI * 2f * i / 8f;
+                    var point = center + new float2(math.cos(angle), math.sin(angle)) * radius;
+                    var height = Game.Simulation.TerrainUtils.SampleHeight(ref terrain,
+                        new float3(point.x, 0f, point.y));
+                    if (!math.isfinite(height)) return float.MaxValue;
+                    low = math.min(low, height);
+                    high = math.max(high, height);
+                }
+                return high - low;
+            }
+            var centerpieces = new List<PlazaCenterpiecePlacement>();
+            foreach (var centerpiece in plan.Centerpieces)
+                if (Rise(centerpiece.Position, centerpiece.Radius) <= CenterpieceMaximumRise)
+                    centerpieces.Add(centerpiece);
+                else _composedSlopeRemoved++;
+            var furniture = new List<PlazaFurniturePlacement>();
+            foreach (var item in plan.Furniture)
+                if (item.Kind == PlazaFurnitureKind.Tree
+                    || Rise(item.Position, math.max(0.5f, item.FootprintRadius)) <= FurnitureMaximumRise)
+                    furniture.Add(item);
+                else _composedSlopeRemoved++;
+            if (_composedSlopeRemoved == 0) return plan;
+            Mod.Log.Info($"ParkManager plaza design left out {_composedSlopeRemoved} objects on steep ground.");
+            return new PlazaPlan(plan.Seed, plan.CenterPlacement, plan.ArrangementPlacement,
+                plan.CenterpieceSpacing, plan.ArrangementSpacing, centerpieces, furniture);
+        }
+
+        /// <summary>
+        /// Plans the plaza's ground for the build: the composed paving and
+        /// green when there is a grass surface that differs from the chosen
+        /// paving, otherwise the plot as one surface as before.
+        /// </summary>
+        private bool PrepareComposedSurfaces()
+        {
+            _plazaGreenPrefab = Entity.Null;
+            _expectedPlazaGreenAreas = 0;
+            _plazaSurfacesComposed = false;
+            if (_composedSurfaces == null || _composedSurfaces.Green.Count == 0) return false;
+            if (!_assetCatalog.TryGetGreenSurface(out _plazaGreenPrefab, out var greenName)
+                || _plazaGreenPrefab == _parkSurfacePrefab)
+            {
+                Mod.Log.Info("ParkManager plaza green is built as one surface: no separate "
+                    + "grass surface (or the plaza itself is grass).");
+                _plazaGreenPrefab = Entity.Null;
+                return false;
+            }
+            _plazaSurfacesComposed = true;
+            Mod.Log.Info($"ParkManager plaza surfaces: {_composedSurfaces.Paving.Count} paving, "
+                + $"{_composedSurfaces.Green.Count} green ('{greenName}').");
+            return true;
+        }
+
+        /// <summary>Creates the planned surfaces; returns how many paving pieces were made.</summary>
+        private bool CreateComposedSurfaces(ref Game.Simulation.TerrainHeightData terrain)
+        {
+            foreach (var piece in _composedSurfaces.Paving)
+                if (!CreatePolygonArea(_parkSurfacePrefab, ref terrain, piece)) return false;
+            foreach (var green in _composedSurfaces.Green)
+                if (!CreatePolygonArea(_plazaGreenPrefab, ref terrain, green)) return false;
+            _expectedParkSurfaceAreas = _composedSurfaces.Paving.Count;
+            _expectedPlazaGreenAreas = _composedSurfaces.Green.Count;
+            return true;
         }
 
         private ulong ComposedDesignKey(List<float2> entrances)

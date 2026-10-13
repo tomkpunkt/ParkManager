@@ -12,6 +12,7 @@
     <Compile Include="PlazaDesignTests.cs" />
     <Compile Include="PlazaDesignJson.cs" />
     <Compile Include="PlazaFurnishingTests.cs" />
+    <Compile Include="PlazaSurfaceTests.cs" />
     <Compile Include="../../Geometry/PolygonMath.cs" Link="PolygonMath.cs" />
     <Compile Include="../../Geometry/Seeds.cs" Link="Seeds.cs" />
     <Compile Include="../../Geometry/PlazaPlan.cs" Link="PlazaPlan.cs" />
@@ -33,6 +34,7 @@
     <Compile Include="../../Geometry/PlazaComposer.Scores.cs" Link="PlazaComposer.Scores.cs" />
     <Compile Include="../../Geometry/PlazaComposer.Green.cs" Link="PlazaComposer.Green.cs" />
     <Compile Include="../../Geometry/PlazaFurnishing.cs" Link="PlazaFurnishing.cs" />
+    <Compile Include="../../Geometry/PlazaSurfaces.cs" Link="PlazaSurfaces.cs" />
     <Compile Include="../../Geometry/PlazaFurnisher.cs" Link="PlazaFurnisher.cs" />
     <Compile Include="../../Geometry/PlazaFurnisher.Motifs.cs" Link="PlazaFurnisher.Motifs.cs" />
     <Compile Include="../../Geometry/PlazaFurnisher.Movement.cs" Link="PlazaFurnisher.Movement.cs" />

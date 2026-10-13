@@ -167,6 +167,20 @@ namespace ParkManager.Assets
             return TryUse(choice, out prefab, out _);
         }
 
+        /// <summary>
+        /// The ground for a plaza's designed green: the grass surface the
+        /// park default would pick, independent of the plaza's own surface.
+        /// </summary>
+        internal bool TryGetGreenSurface(out Entity prefab, out string name)
+        {
+            prefab = Entity.Null;
+            name = string.Empty;
+            if (!_choices.TryGetValue(ParkAssetCategory.Surface, out var choices)
+                || choices.Count == 0) return false;
+            name = ChooseDefault(ParkAssetCategory.Surface, choices);
+            return TryUse(FindChoice(choices, name), out prefab, out _);
+        }
+
         /// <summary>Resolves one explicit arrangement asset without falling back
         /// to a different prefab when a selection disappears.</summary>
         internal bool TryGetNamed(ParkAssetCategory category, string name,

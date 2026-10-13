@@ -170,31 +170,49 @@ namespace ParkManager.Tools
         /// polygon fill, so close horizontal scanlines clipped to the outline
         /// read as water, framed by a darker shore line.
         /// </summary>
+        private static readonly Color PlazaGreen = new Color(0.30f, 0.72f, 0.28f, 0.55f);
+        private static readonly Color PlazaGreenEdge = new Color(0.18f, 0.55f, 0.16f, 1f);
+
+        /// <summary>The designed green of a composed plaza, as it will be built.</summary>
+        internal static void DrawPlazaGreen(OverlayRenderSystem.Buffer buffer,
+            IReadOnlyList<List<float2>> green, float height)
+        {
+            if (green == null) return;
+            foreach (var zone in green) Fill(buffer, zone, height, PlazaGreen, PlazaGreenEdge);
+        }
+
         private static void DrawLake(OverlayRenderSystem.Buffer buffer,
             IReadOnlyList<float2> lake, float height)
         {
             if (lake == null || lake.Count < 3) return;
-            PolygonMath.Bounds(lake, out var min, out var max);
+            Fill(buffer, lake, height, LakeWater, LakeShore);
+        }
+
+        /// <summary>Scanline fill with an outline, projected onto the terrain.</summary>
+        private static void Fill(OverlayRenderSystem.Buffer buffer,
+            IReadOnlyList<float2> polygon, float height, Color fill, Color edge)
+        {
+            PolygonMath.Bounds(polygon, out var min, out var max);
             const float spacing = 2.5f;
             var crossings = new List<float>();
             for (var z = min.y + spacing * 0.5f; z < max.y; z += spacing)
             {
                 crossings.Clear();
-                for (int i = 0, j = lake.Count - 1; i < lake.Count; j = i++)
+                for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
                 {
-                    var a = lake[j];
-                    var b = lake[i];
+                    var a = polygon[j];
+                    var b = polygon[i];
                     if ((a.y > z) == (b.y > z)) continue;
                     crossings.Add(a.x + (z - a.y) / (b.y - a.y) * (b.x - a.x));
                 }
                 crossings.Sort();
                 for (var k = 0; k + 1 < crossings.Count; k += 2)
-                    Line(buffer, LakeWater, new float3(crossings[k], height, z),
+                    Line(buffer, fill, new float3(crossings[k], height, z),
                         new float3(crossings[k + 1], height, z), spacing * 1.05f);
             }
-            for (int i = 0, j = lake.Count - 1; i < lake.Count; j = i++)
-                Line(buffer, LakeShore, new float3(lake[j].x, height, lake[j].y),
-                    new float3(lake[i].x, height, lake[i].y), 0.9f);
+            for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+                Line(buffer, edge, new float3(polygon[j].x, height, polygon[j].y),
+                    new float3(polygon[i].x, height, polygon[i].y), 0.9f);
         }
 
         private static void Rectangle(OverlayRenderSystem.Buffer buffer,

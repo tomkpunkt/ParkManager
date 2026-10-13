@@ -73,6 +73,8 @@ internal static class PlazaDesignTests
         var results = new List<object>();
         var times = new List<double>();
         var furnishTimes = new List<double>();
+        var surfaceTimes = new List<double>();
+        var pavingPieces = new List<int>();
         foreach (var testCase in Cases())
         foreach (var style in styles)
         {
@@ -91,6 +93,11 @@ internal static class PlazaDesignTests
                 != JsonSerializer.Serialize(PlazaFurnishingTests.Describe(furnishedAgain, false)))
                 errors.Add("furnishing not deterministic");
             furnishTimes.Add(furnishing.Milliseconds);
+            var surfaceTimer = System.Diagnostics.Stopwatch.StartNew();
+            var surfaces = PlazaSurfaceComposer.Compose(testCase.Polygon, design);
+            surfaceTimes.Add(surfaceTimer.Elapsed.TotalMilliseconds);
+            if (design.Succeeded) pavingPieces.Add(surfaces.Paving.Count);
+            errors.AddRange(PlazaSurfaceTests.Check(testCase, design, surfaces));
             foreach (var error in errors)
                 failures.Add($"Plaza design {testCase.Name} [{style}]: {error}");
             times.Add(design.Metrics.Milliseconds);
@@ -99,13 +106,16 @@ internal static class PlazaDesignTests
                 name = testCase.Name, requested = style.ToString(),
                 polygon = Points(testCase.Polygon), entrances = Points(testCase.Entrances),
                 design = PlazaDesignJson.Describe(design),
-                furnishing = PlazaFurnishingTests.Describe(furnishing), errors,
+                furnishing = PlazaFurnishingTests.Describe(furnishing),
+                surfaces = PlazaSurfaceTests.Describe(surfaces), errors,
             });
         }
         PlazaFurnishingTests.Stress(failures);
         Console.WriteLine($"Plaza designs: {results.Count} composed, "
             + $"avg {times.Average():F1} ms, max {times.Max():F1} ms; furnished "
-            + $"avg {furnishTimes.Average():F1} ms, max {furnishTimes.Max():F1} ms.");
+            + $"avg {furnishTimes.Average():F1} ms, max {furnishTimes.Max():F1} ms; surfaces "
+            + $"avg {surfaceTimes.Average():F1} ms, max {surfaceTimes.Max():F1} ms, paving pieces "
+            + $"avg {pavingPieces.Average():F1}, max {pavingPieces.Max()}.");
         return new { count = results.Count, cases = results,
             averageMs = times.Average(), maximumMs = times.Max() };
     }

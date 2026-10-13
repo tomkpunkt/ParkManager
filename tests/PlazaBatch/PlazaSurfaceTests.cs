@@ -34,6 +34,7 @@ internal static class PlazaSurfaceTests
         var gaps = 0;
         var overlaps = 0;
         var samples = 0;
+        var innerGaps = 0;
         for (var y = min.y + 0.37f; y < max.y; y += 1.3f)
         for (var x = min.x + 0.29f; x < max.x; x += 1.3f)
         {
@@ -44,12 +45,19 @@ internal static class PlazaSurfaceTests
             if (near) continue;
             samples++;
             var count = surfaces.Count(s => PolygonMath.PointInside(point, s));
-            if (count == 0) gaps++;
+            if (count == 0)
+            {
+                gaps++;
+                // Inside the plaza (paths, entrances, visible paving edges)
+                // nothing may be bare; only right at the plot edge.
+                if (PolygonMath.DistanceToBoundarySquared(point, plot) > 1.5f * 1.5f) innerGaps++;
+            }
             if (count > 1) overlaps++;
         }
         // Dropped slivers and crumbs may leave a little bare ground.
         if (gaps > samples * 0.005) errors.Add($"{gaps} of {samples} sample points without a surface");
         if (overlaps > 0) errors.Add($"{overlaps} sample points under two surfaces");
+        if (innerGaps > 0) errors.Add($"{innerGaps} bare sample points inside the plaza");
         if (plan.Paving.Count > plan.Green.Count * 2 + 2)
             errors.Add($"paving split into {plan.Paving.Count} pieces for {plan.Green.Count} green areas");
         return errors;

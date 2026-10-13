@@ -354,6 +354,7 @@ namespace ParkManager.Tools
         private void GeneratePlazaPlan()
         {
             _plazaPlan = null;
+            _composedSurfaces = null;
             _pathPlan = null;
             _decorationPlan = null;
             _pathPreview.Clear();

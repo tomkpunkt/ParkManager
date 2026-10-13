@@ -590,6 +590,7 @@ namespace ParkManager.Geometry
                         ? new float2(-tangents[i].y, tangents[i].x) : tangents[i];
                 var size = item.Size;
                 var rotation = RotationFacing(facing);
+                var assetName = ChooseAsset(context, motif, index, ref random, item.AssetName);
                 if (motif.Item == PlazaFurnitureKind.Tree)
                 {
                     // Trees vary a little; rows stay calmer than groves.
@@ -599,7 +600,7 @@ namespace ParkManager.Geometry
                 }
                 motif.Placements.Add(new PlazaFurniturePlacement
                 {
-                    Kind = motif.Item, AssetName = item.AssetName, ArrangementId = index,
+                    Kind = motif.Item, AssetName = assetName, ArrangementId = index,
                     FootprintRadius = item.FootprintRadius, Position = point,
                     Rotation = rotation, Size = size,
                 });
@@ -611,6 +612,23 @@ namespace ParkManager.Geometry
                 accepted++;
             }
             return accepted;
+        }
+
+        /// <summary>
+        /// Which of the chosen assets an object gets: a row or a seating edge
+        /// keeps one asset (a classic design the same one everywhere), groves
+        /// and planting mix them.
+        /// </summary>
+        private static string ChooseAsset(Context context, PlazaMotif motif, int index,
+            ref Unity.Mathematics.Random random, string first)
+        {
+            if (!context.Palette.Alternatives.TryGetValue(motif.Item, out var names)
+                || names.Count < 2) return first;
+            if (motif.Kind == PlazaMotifKind.Grove || motif.Kind == PlazaMotifKind.BedPlanting)
+                return names[random.NextInt(0, names.Count)];
+            if (context.Design.Grammar == PlazaGrammar.Classic) return names[0];
+            var pick = Seeds.Mix(context.Seed, 0x85ebca6bu ^ (uint)(index * 2654435761u));
+            return names[(int)(pick % (uint)names.Count)];
         }
 
         private static void Clear(Context context, int index)

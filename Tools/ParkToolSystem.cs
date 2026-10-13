@@ -76,6 +76,7 @@ namespace ParkManager.Tools
             _selectedSiteKind = nextKind;
             _pedestrianPathPrefab = Unity.Entities.Entity.Null;
             _plazaPlan = null;
+            _composedSurfaces = null;
             DiscardPathAndDecorationPlans();
             PublishPlannerState();
             _ui?.SetSiteType((int)_selectedSiteKind);
@@ -580,11 +581,16 @@ namespace ParkManager.Tools
                 PublishPathBuildState(UiText.Of("path.plazaVariantCalculating"));
                 // The first design uses the current settings; every further
                 // request is a new variant with rolled settings.
-                if (_plazaPlan != null) RollPlazaVariant(Seeds.NewSeed());
+                // A composed design keeps the player's assets: a variant is a
+                // new composition, not a new choice of objects.
+                if (_plazaPlan != null && _plazaDesignStyle >= 0)
+                    _plazaSeed = Seeds.NewSeed();
+                else if (_plazaPlan != null) RollPlazaVariant(Seeds.NewSeed());
                 GeneratePlazaPlan();
                 return;
             }
             _plazaPlan = null;
+            _composedSurfaces = null;
             PublishPathBuildState(UiText.Of("path.variantCalculating"));
             var hub = FindInteriorHub();
             var entrancePoints = EntrancePoints();
@@ -676,6 +682,7 @@ namespace ParkManager.Tools
         {
             _entrances.Clear();
             _plazaPlan = null;
+            _composedSurfaces = null;
             _buildIssues.Clear();
             DiscardPathAndDecorationPlans();
             PublishPlannerState();
@@ -815,7 +822,7 @@ namespace ParkManager.Tools
                 _plannerMode, _entrances, _hoverEntrance, _pathPreview,
                 _decorationPlan, IsPlaza,
                 _buildIssues, LastSnap, HasSnapGuide, SnapGuide);
-            if (IsPlaza && _composedSurfaces != null)
+            if (IsPlaza && !_removeMode && _plazaPlan != null && _composedSurfaces != null)
             {
                 var height = _worldPoints.Count > 0 ? _worldPoints[0].y + 0.1f : 0.1f;
                 if (!HasBuiltPaths) ParkOverlay.DrawPlazaGreen(buffer, _composedSurfaces.Green, height);

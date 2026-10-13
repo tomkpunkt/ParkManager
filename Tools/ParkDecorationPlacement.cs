@@ -140,8 +140,11 @@ namespace ParkManager.Tools
             if (IsPlaza
                 && _plazaPlan != null)
             {
-                // Keep the structure preview and only reroll the furnishings.
-                if (_decorationPlan != null)
+                // Keep the structure preview and only reroll the furnishings;
+                // a composed design keeps its assets and rearranges them.
+                if (_decorationPlan != null && _plazaDesignStyle >= 0)
+                    _plazaFurnishingSeed = Seeds.NewSeed();
+                else if (_decorationPlan != null)
                     RollPlazaFurnishing(Seeds.NewSeed());
                 ReplanPlazaArrangement();
                 return;

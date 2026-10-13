@@ -17,6 +17,8 @@ namespace ParkManager.Tools
     public sealed partial class ParkToolSystem
     {
         private int _plazaDesignStyle = -1;
+        /// <summary>Seed of the furnishing alone: rearranging keeps the design.</summary>
+        private int _plazaFurnishingSeed = 1;
         // Composing is the expensive step; furnishing reruns whenever the
         // assets or the density change, composing only for a new outline,
         // entrances, style or seed.
@@ -56,7 +58,7 @@ namespace ParkManager.Tools
             }
             _composedSurfaces = PlazaSurfaceComposer.Compose(_points, design);
             var palette = ComposedPalette(useCenter, centerRadius);
-            var furnishing = PlazaFurnisher.Furnish(design, palette, _plazaSeed);
+            var furnishing = PlazaFurnisher.Furnish(design, palette, _plazaFurnishingSeed);
             var plan = KeepOffSlopes(furnishing.Plan);
             var counts = new Dictionary<PlazaFurnitureKind, int>();
             foreach (var placement in furnishing.Plan.Furniture)
@@ -193,7 +195,12 @@ namespace ParkManager.Tools
             foreach (var kind in new[] { PlazaFurnitureKind.Tree, PlazaFurnitureKind.Bench,
                          PlazaFurnitureKind.Lamp, PlazaFurnitureKind.Bush })
             {
-                if (!TryPaletteAsset(kind, out var prefab, out var name)) continue;
+                var chosen = PaletteAssets(kind);
+                if (chosen.Count == 0) continue;
+                var (prefab, name) = chosen[0];
+                var names = new List<string>();
+                foreach (var asset in chosen) names.Add(asset.name);
+                palette.Alternatives[kind] = names;
                 var measured = _assetCatalog.TryGetPlanarRadius(prefab, out var radius)
                     ? radius : 0f;
                 PlazaPaletteItem item;
@@ -227,25 +234,29 @@ namespace ParkManager.Tools
             return palette;
         }
 
-        private bool TryPaletteAsset(PlazaFurnitureKind kind, out Unity.Entities.Entity prefab,
-            out string name)
+        /// <summary>
+        /// The assets the player chose for a kind: every one named in the
+        /// plaza arrangement, otherwise the park chooser's selection
+        /// (several when it is a mix). Planters only when the arrangement
+        /// contains one.
+        /// </summary>
+        private List<(Entity prefab, string name)> PaletteAssets(PlazaFurnitureKind kind)
         {
-            prefab = Unity.Entities.Entity.Null;
-            name = string.Empty;
+            var result = new List<(Entity, string)>();
             var category = ArrangementCategory(kind);
             var listed = false;
             foreach (var item in _plazaArrangement)
             {
                 if (item.Kind != kind) continue;
                 listed = true;
-                if (string.IsNullOrEmpty(item.AssetName)) continue;
-                if (!_assetCatalog.TryGetNamed(category, item.AssetName, out prefab)) continue;
-                name = item.AssetName;
-                return true;
+                if (string.IsNullOrEmpty(item.AssetName)
+                    || result.Exists(asset => asset.Item2 == item.AssetName)
+                    || !_assetCatalog.TryGetNamed(category, item.AssetName, out var prefab)) continue;
+                result.Add((prefab, item.AssetName));
             }
-            // Planters are an option the player adds to the arrangement.
-            if (kind == PlazaFurnitureKind.Bush && !listed) return false;
-            return _assetCatalog.TryGetSelected(category, out prefab, out name);
+            if (result.Count > 0) return result;
+            if (kind == PlazaFurnitureKind.Bush && !listed) return result;
+            return _assetCatalog.GetChosen(category);
         }
     }
 }

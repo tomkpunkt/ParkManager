@@ -77,6 +77,9 @@ namespace ParkManager.Tools
             }
             var count = CountMembers(park);
             RequestBundleDeletion(park);
+            // The plaza drawn in the workspace is gone with it: no stale
+            // green or seams over the empty ground.
+            if (park == _lastBuildRecord) _composedSurfaces = null;
             Mod.Log.Info($"ParkManager removes park {park} with {count} "
                 + "elements on player request.");
             ClearRemoveSelection();

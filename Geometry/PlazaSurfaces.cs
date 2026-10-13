@@ -23,8 +23,8 @@ namespace ParkManager.Geometry
         private const float Epsilon = 1e-3f;
         /// <summary>Smaller green would only make crumbs and slivers in the paving.</summary>
         private const float MinimumGreenArea = 6f;
-        private const float MinimumPavingArea = 6f;
-        private const float MinimumPavingWidth = 0.5f;
+        private const float MinimumPavingArea = 1f;
+        private const float MinimumPavingWidth = 0.2f;
         /// <summary>Shortest shared edge two paving pieces are merged along.</summary>
         private const float MinimumSeam = 0.5f;
         /// <summary>Shorter edges are dropped; they are invisible and fragile in the game.</summary>
@@ -41,19 +41,173 @@ namespace ParkManager.Geometry
                     // paving cuts and the game's area nodes few.
                     var green = DropShortEdges(Clean(PlazaComposer.Simplify(
                         Counterclockwise(zone.Polygon), 0.1f)));
+                    green = SnapToPlot(DropSpikes(green), outline);
                     if (green.Count < 3 || PlazaShape.Area(green) < MinimumGreenArea
                         || !StrictlySimple(green)) continue;
                     plan.Green.Add(green);
                 }
-            if (plan.Green.Count == 0)
+            var axis = math.normalizesafe(design != null && design.Rooms.Count > 0
+                ? design.Rooms[0].Axis : new float2(1f, 0f));
+            if (plan.Green.Count == 0) plan.Paving.Add(outline);
+            else
             {
-                plan.Paving.Add(outline);
-                return plan;
+                // Same-material pieces show a seam in the game: cut along or
+                // across the square's axis, whichever leaves less seam.
+                var along = Difference(outline, plan.Green, axis);
+                var across = Difference(outline, plan.Green, new float2(-axis.y, axis.x));
+                plan.Paving.AddRange(SeamLength(across) < SeamLength(along) - 0.5f ? across : along);
             }
-            // Cuts run across the main square's axis, so seams follow its frame.
-            var axis = design.Rooms.Count > 0 ? design.Rooms[0].Axis : new float2(1f, 0f);
-            plan.Paving.AddRange(Difference(outline, plan.Green, math.normalizesafe(axis)));
+            // The game lays a surface's pattern along its first edge: every
+            // surface starts with the edge running most along the axis.
+            for (var i = 0; i < plan.Paving.Count; i++) plan.Paving[i] = StartAlong(plan.Paving[i], axis);
+            for (var i = 0; i < plan.Green.Count; i++) plan.Green[i] = StartAlong(plan.Green[i], axis);
             return plan;
+        }
+
+        /// <summary>Total length of the cut edges (vertical in the cut frame) between pieces.</summary>
+        private static float SeamLength(List<List<float2>> pieces)
+        {
+            // Every seam is shared by two pieces: half the edge length that
+            // two pieces have in common.
+            var total = 0f;
+            for (var a = 0; a < pieces.Count; a++)
+            for (var b = a + 1; b < pieces.Count; b++)
+                total += Shared(pieces[a], pieces[b]);
+            return total;
+        }
+
+        private static float Shared(List<float2> p, List<float2> q)
+        {
+            var length = 0f;
+            for (var i = 0; i < p.Count; i++)
+            {
+                var a = p[i];
+                var b = p[(i + 1) % p.Count];
+                var mid = (a + b) * 0.5f;
+                for (var j = 0; j < q.Count; j++)
+                    if (PolygonMath.DistanceToSegmentSquared(mid, q[j], q[(j + 1) % q.Count]) < 1e-4f)
+                    {
+                        length += math.distance(a, b);
+                        break;
+                    }
+            }
+            return length;
+        }
+
+        /// <summary>Rotates the ring to start at the edge pointing most along the axis.</summary>
+        internal static List<float2> StartAlong(List<float2> ring, float2 axis)
+        {
+            var best = 0;
+            var bestScore = float.MinValue;
+            for (var i = 0; i < ring.Count; i++)
+            {
+                var edge = ring[(i + 1) % ring.Count] - ring[i];
+                var length = math.length(edge);
+                if (length < MinimumEdge) continue;
+                // Pointing along, not just parallel: the opposite direction
+                // would turn the pattern by 180 degrees.
+                var score = math.dot(edge / length, axis);
+                if (score <= bestScore) continue;
+                bestScore = score;
+                best = i;
+            }
+            var result = new List<float2>(ring.Count);
+            for (var i = 0; i < ring.Count; i++) result.Add(ring[(best + i) % ring.Count]);
+            return result;
+        }
+
+        /// <summary>Distance below which green reaches the plot edge instead of leaving a strip.</summary>
+        private const float SnapDistance = 1.5f;
+        /// <summary>Sharper corners are spikes of the traced garden outline.</summary>
+        private const float MinimumCornerAngle = 25f;
+
+        /// <summary>
+        /// Green that comes within <see cref="SnapDistance"/> of the plot edge
+        /// is laid flush against it, corners of the plot included, so no thin
+        /// strip of paving (or bare ground) is left between them.
+        /// </summary>
+        internal static List<float2> SnapToPlot(List<float2> green, List<float2> plot)
+        {
+            if (green.Count < 3) return green;
+            var onEdge = new int[green.Count];
+            var position = new float[green.Count];
+            var snapped = new List<float2>(green);
+            for (var i = 0; i < green.Count; i++)
+            {
+                onEdge[i] = -1;
+                var best = SnapDistance * SnapDistance;
+                for (var e = 0; e < plot.Count; e++)
+                {
+                    var a = plot[e];
+                    var b = plot[(e + 1) % plot.Count];
+                    var ab = b - a;
+                    var t = math.saturate(math.dot(green[i] - a, ab) / math.max(1e-6f, math.lengthsq(ab)));
+                    var on = a + ab * t;
+                    var distance = math.distancesq(on, green[i]);
+                    if (distance >= best) continue;
+                    best = distance;
+                    onEdge[i] = e;
+                    position[i] = t;
+                    snapped[i] = on;
+                }
+            }
+            // Follow the plot's corners between two snapped points on different edges.
+            var result = new List<float2>();
+            var perimeter = 0f;
+            for (var e = 0; e < plot.Count; e++) perimeter += math.distance(plot[e], plot[(e + 1) % plot.Count]);
+            for (var i = 0; i < snapped.Count; i++)
+            {
+                result.Add(snapped[i]);
+                var next = (i + 1) % snapped.Count;
+                if (onEdge[i] < 0 || onEdge[next] < 0 || onEdge[i] == onEdge[next]
+                    && position[next] >= position[i]) continue;
+                var corners = new List<float2>();
+                var walked = 0f;
+                var edge = onEdge[i];
+                var from = snapped[i];
+                for (var guard = 0; guard < plot.Count && edge != onEdge[next]; guard++)
+                {
+                    var corner = plot[(edge + 1) % plot.Count];
+                    walked += math.distance(from, corner);
+                    corners.Add(corner);
+                    from = corner;
+                    edge = (edge + 1) % plot.Count;
+                }
+                walked += math.distance(from, snapped[next]);
+                // Only a short way round; a long one means the green does not hug this stretch.
+                if (edge == onEdge[next] && walked < perimeter * 0.25f
+                    && walked < math.distance(snapped[i], snapped[next]) * 3f + 4f)
+                    result.AddRange(corners);
+            }
+            result = DropShortEdges(Clean(result));
+            return result.Count >= 3 && StrictlySimple(result)
+                && PolygonMath.SignedArea(result) > 0.0 ? result : green;
+        }
+
+        /// <summary>Removes corners sharper than <see cref="MinimumCornerAngle"/>.</summary>
+        internal static List<float2> DropSpikes(List<float2> ring)
+        {
+            var result = new List<float2>(ring);
+            var limit = math.cos(math.radians(MinimumCornerAngle));
+            for (var guard = 0; guard < ring.Count && result.Count > 3; guard++)
+            {
+                var removed = false;
+                for (var i = 0; i < result.Count && result.Count > 3; i++)
+                {
+                    var previous = result[(i + result.Count - 1) % result.Count] - result[i];
+                    var next = result[(i + 1) % result.Count] - result[i];
+                    if (math.dot(math.normalizesafe(previous), math.normalizesafe(next)) < limit)
+                        continue;
+                    var candidate = new List<float2>(result);
+                    candidate.RemoveAt(i);
+                    if (!StrictlySimple(candidate)) continue;
+                    result = candidate;
+                    removed = true;
+                    break;
+                }
+                if (!removed) break;
+            }
+            return result;
         }
 
         /// <summary>The plot minus the holes, as simple polygons without overlap.</summary>

@@ -168,6 +168,27 @@ namespace ParkManager.Assets
         }
 
         /// <summary>
+        /// Every asset the player chose for a category in the park chooser:
+        /// the multi-selection when there is one, otherwise the single
+        /// selection or the vetted default.
+        /// </summary>
+        internal List<(Entity prefab, string name)> GetChosen(ParkAssetCategory category)
+        {
+            var result = new List<(Entity, string)>();
+            if (IsMultiCategory(category)
+                && _multiSelected.TryGetValue(category, out var selectedMany)
+                && selectedMany.Count > 0
+                && _choices.TryGetValue(category, out var choices))
+                foreach (var choice in choices)
+                    if (selectedMany.Contains(choice.Name)
+                        && TryUse(choice, out var prefab, out var name))
+                        result.Add((prefab, name));
+            if (result.Count == 0 && TryGetSelected(category, out var single, out var singleName))
+                result.Add((single, singleName));
+            return result;
+        }
+
+        /// <summary>
         /// The ground for a plaza's designed green: the grass surface the
         /// park default would pick, independent of the plaza's own surface.
         /// </summary>

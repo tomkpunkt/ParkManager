@@ -90,6 +90,12 @@ namespace ParkManager.Geometry
     {
         internal readonly Dictionary<PlazaFurnitureKind, PlazaPaletteItem> Items =
             new Dictionary<PlazaFurnitureKind, PlazaPaletteItem>();
+        /// <summary>
+        /// Further assets of a kind the player chose; laid out with the
+        /// footprint of <see cref="Items"/>. Rows keep one asset, groves mix.
+        /// </summary>
+        internal readonly Dictionary<PlazaFurnitureKind, List<string>> Alternatives =
+            new Dictionary<PlazaFurnitureKind, List<string>>();
         internal bool Centerpiece = true;
         internal PlazaCenterpieceKind CenterpieceKind = PlazaCenterpieceKind.Fountain;
         /// <summary>Footprint of the chosen centerpiece asset; 0 lets the square decide.</summary>

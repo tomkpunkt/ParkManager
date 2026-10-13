@@ -83,6 +83,7 @@ namespace ParkManager.Tools
             _preflightWarning = null;
             _pathPlan = null;
             _plazaPlan = null;
+            _composedSurfaces = null;
             _decorationPlan = null;
             _pendingDecorations.Clear();
             _closed = false;

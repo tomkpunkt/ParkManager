@@ -31,7 +31,6 @@ namespace ParkManager.Geometry
             {
                 AddAvenues(context);
                 AddGroves(context);
-                if (design.Grammar != PlazaGrammar.Natural) AddTreeGrids(context);
             }
             if (has(PlazaFurnitureKind.Bench))
             {
@@ -168,156 +167,73 @@ namespace ParkManager.Geometry
             motif.Line[1] = origin + direction * to;
         }
 
-        /// <summary>Distance from rooms, beds and corridors a grove tree keeps.</summary>
-        private const float GridClearance = 3f;
-        /// <summary>A grove needs this many trees to read as one.</summary>
-        private const int MinimumGridTrees = 6;
-        private const int MaximumGridTrees = 30;
-        private const int MaximumGroves = 2;
-
-        /// <summary>
-        /// Large paved remainders outside the rooms become groves: a grid
-        /// along the square's axis (square in classic, staggered in modern),
-        /// clear of rooms, beds, corridors and entrances. Points are grouped
-        /// by grid neighbourhood; only groups large enough to read as a
-        /// grove are kept, so no stray single trees appear.
-        /// </summary>
-        private static void AddTreeGrids(Context context)
-        {
-            var design = context.Design;
-            var geometry = context.Geometry;
-            var tree = context.Palette.Items[PlazaFurnitureKind.Tree];
-            var main = design.Rooms[0];
-            var axis = main.Axis;
-            var normal = new float2(-axis.y, axis.x);
-            var spacing = math.max(design.Grammar == PlazaGrammar.Classic ? 7f : 6.5f,
-                tree.CrownRadius * 1.6f);
-            var staggered = design.Grammar == PlazaGrammar.Modern;
-            PolygonMath.Bounds(geometry.Polygon, out var min, out var max);
-            var reach = math.length(max - min);
-            var columns = (int)math.ceil(reach / spacing) + 1;
-            var points = new Dictionary<int2, float2>();
-            for (var row = -columns; row <= columns; row++)
-            for (var column = -columns; column <= columns; column++)
-            {
-                var shift = staggered && (row & 1) != 0 ? 0.5f : 0f;
-                var point = main.Center + axis * ((column + shift) * spacing) + normal * (row * spacing);
-                if (GridPointFree(context, point, tree)) points[new int2(column, row)] = point;
-            }
-            // Groups of neighbouring grid points.
-            var groups = new List<List<int2>>();
-            var seen = new HashSet<int2>();
-            foreach (var start in new List<int2>(points.Keys))
-            {
-                if (seen.Contains(start)) continue;
-                var group = new List<int2>();
-                var queue = new Queue<int2>();
-                queue.Enqueue(start);
-                seen.Add(start);
-                while (queue.Count > 0)
-                {
-                    var cell = queue.Dequeue();
-                    group.Add(cell);
-                    foreach (var step in new[] { new int2(1, 0), new int2(-1, 0),
-                                 new int2(0, 1), new int2(0, -1), new int2(1, 1), new int2(-1, -1),
-                                 new int2(1, -1), new int2(-1, 1) })
-                    {
-                        var next = cell + step;
-                        if (!points.ContainsKey(next) || !seen.Add(next)) continue;
-                        queue.Enqueue(next);
-                    }
-                }
-                // A grove is two-dimensional; a single row is an avenue.
-                int2 low = group[0], high = group[0];
-                foreach (var cell in group)
-                {
-                    low = math.min(low, cell);
-                    high = math.max(high, cell);
-                }
-                if (group.Count < MinimumGridTrees || high.y - low.y < 1 || high.x - low.x < 2)
-                    continue;
-                groups.Add(group);
-            }
-            // Only the largest remainders become groves, each of a sensible size.
-            groups.Sort((a, b) => b.Count.CompareTo(a.Count));
-            for (var g = 0; g < groups.Count && g < MaximumGroves; g++)
-            {
-                var group = groups[g];
-                var centre = float2.zero;
-                foreach (var cell in group) centre += points[cell];
-                centre /= group.Count;
-                group.Sort((a, b) => math.distancesq(points[a], centre)
-                    .CompareTo(math.distancesq(points[b], centre)));
-                if (group.Count > MaximumGridTrees)
-                    group.RemoveRange(MaximumGridTrees, group.Count - MaximumGridTrees);
-                group.Sort((a, b) => a.y != b.y ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x));
-                var motif = NewMotif(context, PlazaMotifKind.TreeGrid, PlazaFurnitureKind.Tree,
-                    -1, GrovePriority);
-                foreach (var cell in group) motif.Line.Add(points[cell]);
-            }
-        }
-
-        private static bool GridPointFree(Context context, float2 point, PlazaPaletteItem tree)
-        {
-            var geometry = context.Geometry;
-            var design = context.Design;
-            if (!geometry.Contains(point)
-                || geometry.DistanceToBoundary(point) < math.max(2f, tree.CrownRadius * 0.6f))
-                return false;
-            foreach (var room in design.Rooms)
-                if (room.Shape.Contains(point, room.Boundary)
-                    || PlazaComposer.DistanceToOutline(point, room.Boundary) < GridClearance)
-                    return false;
-            foreach (var zone in design.GreenZones)
-                if (PolygonMath.PointInside(point, zone.Polygon)
-                    || PlazaComposer.DistanceToOutline(point, zone.Polygon) < GridClearance * 0.5f)
-                    return false;
-            foreach (var corridor in design.MovementCorridors)
-                if (corridor.Points.Count > 1 && PlazaMovement.DistanceToPolyline(point,
-                        corridor.Points) < corridor.Width * 0.5f + GridClearance)
-                    return false;
-            foreach (var row in design.TreeRows)
-                if (math.sqrt(PolygonMath.DistanceToSegmentSquared(point, row.Start, row.End))
-                    < tree.CrownRadius * 1.5f) return false;
-            foreach (var entrance in context.Movement.Entrances)
-                if (math.distance(point, entrance) < 8f) return false;
-            return true;
-        }
-
         /// <summary>Informal groups of trees inside the green zones meant for them.</summary>
         private static void AddGroves(Context context)
         {
             var design = context.Design;
+            var crown = context.Palette.Items[PlazaFurnitureKind.Tree].CrownRadius;
+            // Trunks keep half a crown from the edge, so the crowns stay
+            // over the green; neighbours keep a little more than a crown.
+            var inset = math.max(1.5f, crown * 0.5f);
+            var apartBy = math.max(5f, crown * 1.6f);
             for (var g = 0; g < design.TreeGroups.Count; g++)
             {
                 var polygon = design.TreeGroups[g];
                 var area = PlazaShape.Area(polygon);
-                var count = math.clamp((int)math.round(area / 70f * context.Palette.Density), 2, 6);
-                var crown = context.Palette.Items[PlazaFurnitureKind.Tree].CrownRadius;
-                var apartBy = math.max(4.5f, crown * 1.2f);
+                var count = math.clamp((int)math.round(area / (math.PI * crown * crown)
+                    * 0.5f * context.Palette.Density), 1, 6);
                 var motif = NewMotif(context, PlazaMotifKind.Grove, PlazaFurnitureKind.Tree,
                     -1, GrovePriority);
-                PolygonMath.Bounds(polygon, out var min, out var max);
-                var random = new Unity.Mathematics.Random(Seeds.Mix(context.Seed,
-                    0x2545f491u ^ (uint)(g * 977 + 1)));
-                // The first tree stands where the zone is widest, the others
-                // keep their distance: a loose cluster, not a grid.
-                var start = PlazaGeometry.AreaCentroid(polygon);
-                if (PolygonMath.PointInside(start, polygon)
-                    && PlazaComposer.DistanceToOutline(start, polygon) >= 1.5f)
-                    motif.Line.Add(start);
-                for (var attempt = 0; attempt < 80 && motif.Line.Count < count; attempt++)
-                {
-                    var point = new float2(random.NextFloat(min.x, max.x),
-                        random.NextFloat(min.y, max.y));
-                    if (!PolygonMath.PointInside(point, polygon)
-                        || PlazaComposer.DistanceToOutline(point, polygon) < 1.5f) continue;
-                    var apart = true;
-                    foreach (var other in motif.Line)
-                        apart &= math.distance(point, other) >= apartBy;
-                    if (apart) motif.Line.Add(point);
-                }
+                foreach (var point in SpreadInside(polygon, count, inset, apartBy,
+                             Seeds.Mix(context.Seed, 0x2545f491u ^ (uint)(g * 977 + 1))))
+                    motif.Line.Add(point);
             }
+        }
+
+        /// <summary>
+        /// Points well inside a green zone: the first where the zone is
+        /// widest, every further one where it has the most room to the edge
+        /// and to the others (farthest-point placement). The result follows
+        /// the zone's shape instead of a grid; a slight seeded nudge keeps
+        /// equal choices from lining up.
+        /// </summary>
+        internal static List<float2> SpreadInside(List<float2> polygon, int count, float inset,
+            float apartBy, uint seed)
+        {
+            var result = new List<float2>();
+            PolygonMath.Bounds(polygon, out var min, out var max);
+            var candidates = new List<(float2 point, float clearance)>();
+            // About 40 steps across the zone, never finer than 0.75 m.
+            var step = math.max(0.75f, math.max(max.x - min.x, max.y - min.y) / 40f);
+            for (var y = min.y + step * 0.5f; y < max.y; y += step)
+            for (var x = min.x + step * 0.5f; x < max.x; x += step)
+            {
+                var point = new float2(x, y);
+                if (!PolygonMath.PointInside(point, polygon)) continue;
+                var clearance = PlazaComposer.DistanceToOutline(point, polygon);
+                if (clearance >= inset) candidates.Add((point, clearance));
+            }
+            var random = new Unity.Mathematics.Random(seed == 0 ? 1u : seed);
+            while (result.Count < count)
+            {
+                var best = -1;
+                var bestScore = float.MinValue;
+                for (var i = 0; i < candidates.Count; i++)
+                {
+                    var (point, clearance) = candidates[i];
+                    var nearest = float.MaxValue;
+                    foreach (var other in result) nearest = math.min(nearest, math.distance(point, other));
+                    if (nearest < apartBy) continue;
+                    var score = math.min(clearance, result.Count == 0 ? clearance : nearest * 0.6f)
+                        + random.NextFloat(0f, 0.3f);
+                    if (score <= bestScore) continue;
+                    bestScore = score;
+                    best = i;
+                }
+                if (best < 0) break;
+                result.Add(candidates[best].point);
+            }
+            return result;
         }
 
         // ---------------------------------------------------------- seating
@@ -576,9 +492,6 @@ namespace ParkManager.Geometry
                     // group needs at least two benches to be one.
                     if ((motif.Kind == PlazaMotifKind.EntranceLamps
                             || motif.Kind == PlazaMotifKind.SeatingGroup) && accepted < 2)
-                        Clear(context, index);
-                    // A grove thinned out by its neighbours is no grove.
-                    if (motif.Kind == PlazaMotifKind.TreeGrid && accepted < MinimumGridTrees)
                         Clear(context, index);
                     return;
             }

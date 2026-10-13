@@ -81,6 +81,8 @@ namespace ParkManager.Geometry
         Island = 2,
         /// <summary>Organic garden area.</summary>
         Garden = 3,
+        /// <summary>Lawn strip a tree row stands on.</summary>
+        TreeStrip = 4,
     }
 
     internal enum PlazaFocalKind : byte

@@ -5,8 +5,15 @@ namespace ParkManager.Geometry
 {
     internal static partial class PlazaComposer
     {
+        /// <summary>Least free depth behind an edge for a tree strip.</summary>
+        internal const float MinimumStripRim = 5.5f;
+
+        /// <summary>Depth of the lawn strip under a tree row.</summary>
+        internal static float TreeStripDepth(PlazaRoomEdge edge)
+            => math.min(4.5f, edge.Rim - GreenGap - 1f);
+
         /// <summary>Smallest bed worth keeping besides the leading motif.</summary>
-        private const float MinimumBedArea = 40f;
+        private const float MinimumBedArea = 60f;
 
         /// <summary>Largest size of a modern companion bed relative to the leading motif.</summary>
         internal const float ModernCompanionShare = 0.6f;
@@ -52,23 +59,28 @@ namespace ParkManager.Geometry
             AddCourtGardens(context, budget);
             AddInnerBeds(context, budget);
 
-            // Below the target: lawns behind the tree rows first, then behind
-            // seating and built edges. Open edges always stay paved. A modern
-            // design keeps its tree rows on paving, so the planted motif
-            // stays the one dominant green figure.
-            foreach (var role in new[] { PlazaEdgeRole.TreeRow, PlazaEdgeRole.SeatingEdge,
-                         PlazaEdgeRole.ArchitecturalEdge })
+            // Trees stand on green, never in the paving: every tree row gets
+            // a lawn strip along its edge, before any other bed takes the room.
+            foreach (var r in order)
+            foreach (var edge in design.Rooms[r].Edges)
+                if (edge.Role == PlazaEdgeRole.TreeRow && edge.Rim >= MinimumStripRim)
+                    AddEdgeBeds(context, r, edge, budget, TreeStripDepth(edge),
+                        PlazaGreenKind.TreeStrip);
+
+            // Below the target: lawns behind seating and built edges. Open
+            // edges always stay paved. A modern design keeps its planted
+            // motif the one dominant green figure.
+            foreach (var role in new[] { PlazaEdgeRole.SeatingEdge, PlazaEdgeRole.ArchitecturalEdge })
             {
-                if (natural || budget.Used >= budget.Minimum) break;
-                if (modern && role == PlazaEdgeRole.TreeRow) continue;
+                if (natural || modern || budget.Used >= budget.Minimum) break;
                 foreach (var r in order)
                 foreach (var edge in design.Rooms[r].Edges)
                     if (edge.Role == role && edge.Rim >= 6f && budget.Used < budget.Minimum)
                         AddEdgeBeds(context, r, edge, budget, context.Rules.BedDepth);
             }
 
-            // Still short: deliberate green in the large paved remainders.
-            if (!modern && budget.Used < budget.Minimum) FillLeftovers(context, budget);
+            // Large paved remainders become one lawn each, for a group of trees.
+            FillLeftovers(context, budget);
             RankLandscape(context);
         }
 
@@ -149,9 +161,12 @@ namespace ParkManager.Geometry
             var design = context.Design;
             var zones = design.GreenZones;
             if (zones.Count == 0) return;
+            // Court gardens and tree strips belong to their room and their
+            // trees; they are neither crumbs nor companions of the motif.
             bool OwnGarden(PlazaGreenZone zone)
-                => design.Rooms[zone.Room].Role == PlazaRoomRole.GardenCourt
-                    && zone.Kind == PlazaGreenKind.Garden;
+                => zone.Kind == PlazaGreenKind.TreeStrip
+                    || design.Rooms[zone.Room].Role == PlazaRoomRole.GardenCourt
+                        && zone.Kind == PlazaGreenKind.Garden;
             var lead = zones[0];
             var bestWeight = -1f;
             foreach (var zone in zones)
@@ -227,7 +242,7 @@ namespace ParkManager.Geometry
         /// wherever a corridor or an entrance crosses the rim.
         /// </summary>
         private static void AddEdgeBeds(Context context, int roomIndex, PlazaRoomEdge edge,
-            GreenBudget budget, float maximumDepth)
+            GreenBudget budget, float maximumDepth, PlazaGreenKind kind = PlazaGreenKind.Border)
         {
             if (budget.Left < 15f) return;
             var room = context.Design.Rooms[roomIndex];
@@ -289,8 +304,7 @@ namespace ParkManager.Geometry
                 if (free && float.IsNaN(runStart)) runStart = t;
                 if (free || float.IsNaN(runStart)) continue;
                 var runEnd = t - step;
-                AddBed(context, roomIndex, budget, At, runStart, runEnd, start, depth,
-                    PlazaGreenKind.Border);
+                AddBed(context, roomIndex, budget, At, runStart, runEnd, start, depth, kind);
                 runStart = float.NaN;
             }
         }
@@ -511,11 +525,15 @@ namespace ParkManager.Geometry
             }
         }
 
+        /// <summary>Smallest paved remainder that becomes a lawn for a group of trees.</summary>
+        private const float MinimumRemainder = 250f;
+
         /// <summary>
-        /// Large paved remainders far from every room read as unplanned. Below
-        /// the green target, each becomes one deliberately shaped green area:
-        /// a lawn panel (classic), a sheared bed (modern) or a garden
-        /// (natural), fitted into the free space like a room.
+        /// Large paved remainders far from every room read as unplanned. Each
+        /// becomes one deliberately shaped lawn: a panel (classic), a sheared
+        /// bed (modern) or a garden (natural), fitted into the free space like
+        /// a room, with room for a loose group of trees. Small remainders stay
+        /// paved; scattered patches are worse than plain paving.
         /// </summary>
         private static void FillLeftovers(Context context, GreenBudget budget)
         {
@@ -536,8 +554,9 @@ namespace ParkManager.Geometry
             var cellArea = geometry.CellSize * geometry.CellSize;
             foreach (var component in Components(free, geometry.Columns, geometry.Rows))
             {
-                if (budget.Used >= budget.Minimum || budget.Left < 30f) return;
-                if (component.Count * cellArea < 120f) continue;
+                if (budget.Left < 30f) return;
+                // Only real remainders: a lawn with room for a group of trees.
+                if (component.Count * cellArea < MinimumRemainder) continue;
                 // The freest point of the remainder anchors the figure.
                 var best = component[0];
                 var bestClearance = -1f;
@@ -555,9 +574,8 @@ namespace ParkManager.Geometry
                         : grammar == PlazaGrammar.Modern
                             ? new[] { PlazaCoreShape.Parallelogram }
                             : new[] { PlazaCoreShape.Ellipse },
-                    Rim = 0.8f, MinimumWidth = 4f, MinimumArea = 30f,
-                    TargetArea = math.min(budget.Left, math.min(component.Count * cellArea * 0.7f,
-                        budget.Minimum - budget.Used + 40f)),
+                    Rim = 0.8f, MinimumWidth = 6f, MinimumArea = 100f,
+                    TargetArea = math.min(budget.Left, component.Count * cellArea * 0.6f),
                     Constraint = FreeAt, Salt = 5u,
                 };
                 request.Centres.Add(geometry.CellCenter(best));

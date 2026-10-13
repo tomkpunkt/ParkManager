@@ -61,15 +61,10 @@ internal static class PlazaDesignTests
             ("an der Engstelle", new[] { new float2(60, 14), new float2(0, 20) }),
             ("Enden", new[] { new float2(0, 20), new float2(120, 20) }));
         Add("Klein", Rect(0, 0, 24, 24), ("1 Eingang", new[] { new float2(12, 0) }));
-        // From a game test (2026-10-13): a plot cut by a roundabout's arc,
-        // six entrances; measured from the screenshot at about 5 px/m.
-        var roundabout = new List<float2> { new(104.4f, 150f), new(156.6f, 149.4f),
-            new(158.4f, 1.4f), new(27.8f, 3.8f), new(28.2f, 54.6f), new(42.6f, 62.4f),
-            new(55.6f, 70.6f), new(71.4f, 85f), new(82.8f, 98.2f), new(91.8f, 112.6f),
-            new(99.4f, 129.6f) };
-        Add("Spielfall Kreisel", roundabout, ("6 Eingänge", new[] { new float2(128.8f, 149.6f),
-            new float2(157.2f, 108.4f), new float2(158.2f, 36.6f), new float2(91f, 2.8f),
-            new float2(28f, 28f), new float2(77.1f, 91.5f) }));
+        // From a game test (2026-10-13, logged input): a plot cut by a
+        // roundabout's arc, five entrances.
+        var roundabout = new List<float2> { new(1.59f, 557.13f), new(-39.14f, 557.25f), new(-38.82f, 662.34f), new(56.12f, 662.05f), new(57.08f, 633.35f), new(50.4f, 629.77f), new(39.97f, 622.88f), new(31.32f, 615.56f), new(25.74f, 609.82f), new(17.51f, 599.28f), new(12.07f, 590.21f), new(6.61f, 577.89f) };
+        Add("Spielfall Kreisel", roundabout, ("5 Eingänge", new float2[] { new(-19.28f, 557.19f), new(-39.05f, 586.29f), new(-38.91f, 633.47f), new(56.6f, 647.55f), new(21.37f, 604.21f) }));
         Add("Groß", Rect(0, 0, 180, 120),
             ("2 Eingänge", new[] { new float2(90, 0), new float2(180, 60) }));
         return cases;
@@ -230,7 +225,8 @@ internal static class PlazaDesignTests
         if (design.GreenZones.Count > 0 && design.GreenZones.Count(z => z.Primary) != 1)
             errors.Add("no single leading landscape motif");
         // Court gardens belong to their court, not to the plaza's motif.
-        var motif = design.GreenZones.Where(z => !(rooms[z.Room].Role == PlazaRoomRole.GardenCourt
+        var motif = design.GreenZones.Where(z => z.Kind != PlazaGreenKind.TreeStrip
+            && !(rooms[z.Room].Role == PlazaRoomRole.GardenCourt
             && z.Kind == PlazaGreenKind.Garden)).ToList();
         if (design.Grammar == PlazaGrammar.Modern && motif.Count > 3)
             errors.Add($"modern design with {motif.Count} green features");

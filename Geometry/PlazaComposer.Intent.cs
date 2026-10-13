@@ -10,6 +10,7 @@ namespace ParkManager.Geometry
             AddAxes(context);
             AddFocalPoints(context);
             AddTreeRows(context);
+            DropEmptyTreeStrips(context);
             AddTreeGroups(context);
             AddSeating(context);
         }
@@ -148,9 +149,9 @@ namespace ParkManager.Geometry
         // -------------------------------------------------------- tree rows
 
         /// <summary>
-        /// A tree row follows its room edge: in the rim when there is depth,
-        /// otherwise in tree pits just inside the room. Rows stand on paving
-        /// or in a bed alike.
+        /// A tree row follows its room edge on the centre line of its lawn
+        /// strip. Trees never stand in the paving: without room for a strip
+        /// there is no row, and the row breaks where its strip does.
         /// </summary>
         private static void AddTreeRows(Context context)
         {
@@ -160,7 +161,7 @@ namespace ParkManager.Geometry
                 var room = design.Rooms[r];
                 foreach (var edge in room.Edges)
                 {
-                    if (edge.Role != PlazaEdgeRole.TreeRow) continue;
+                    if (edge.Role != PlazaEdgeRole.TreeRow || edge.Rim < MinimumStripRim) continue;
                     var outward = edge.Outward;
                     var tangent = new float2(-outward.y, outward.x);
                     float tMin = float.MaxValue, tMax = float.MinValue, oMax = float.MinValue;
@@ -171,18 +172,31 @@ namespace ParkManager.Geometry
                         tMax = math.max(tMax, math.dot(d, tangent));
                         oMax = math.max(oMax, math.dot(d, outward));
                     }
-                    var offset = edge.Rim >= 4f ? math.min(edge.Rim * 0.5f, 3.5f) : -2f;
-                    var o = oMax + offset;
+                    var o = oMax + GreenGap + TreeStripDepth(edge) * 0.5f;
                     var start = room.Center + tangent * (tMin + 2f) + outward * o;
                     var end = room.Center + tangent * (tMax - 2f) + outward * o;
-                    AddRowRuns(context, start, end, context.Rules.TreeSpacing, r,
-                        offset < 0f);
+                    AddRowRuns(context, start, end, context.Rules.TreeSpacing);
                 }
             }
         }
 
+        /// <summary>A tree strip whose row did not fit is just a stray bed: it goes.</summary>
+        private static void DropEmptyTreeStrips(Context context)
+        {
+            var design = context.Design;
+            design.GreenZones.RemoveAll(zone =>
+            {
+                if (zone.Kind != PlazaGreenKind.TreeStrip) return false;
+                foreach (var row in design.TreeRows)
+                    for (var i = 0; i < row.Count; i++)
+                        if (PolygonMath.PointInside(math.lerp(row.Start, row.End,
+                                row.Count > 1 ? i / (row.Count - 1f) : 0f), zone.Polygon)) return false;
+                return true;
+            });
+        }
+
         private static void AddRowRuns(Context context, float2 start, float2 end,
-            float spacing, int roomIndex, bool insideRoom)
+            float spacing)
         {
             var length = math.distance(start, end);
             if (length < spacing * 2f) return;
@@ -193,7 +207,7 @@ namespace ParkManager.Geometry
             for (var i = 0; i <= count; i++)
             {
                 var valid = i < count && TreeSpotFree(context,
-                    start + direction * (step * i), roomIndex, insideRoom);
+                    start + direction * (step * i));
                 if (valid && runStart < 0) runStart = i;
                 if (valid || runStart < 0) continue;
                 var runCount = i - runStart;
@@ -209,8 +223,7 @@ namespace ParkManager.Geometry
             }
         }
 
-        private static bool TreeSpotFree(Context context, float2 point, int roomIndex,
-            bool insideRoom)
+        private static bool TreeSpotFree(Context context, float2 point)
         {
             var geometry = context.Geometry;
             if (!geometry.Contains(point) || geometry.DistanceToBoundary(point) < 1.5f)
@@ -218,12 +231,12 @@ namespace ParkManager.Geometry
             var rooms = context.Design.Rooms;
             for (var r = 0; r < rooms.Count; r++)
             {
-                if (insideRoom && r == roomIndex) continue;
                 if (rooms[r].Shape.Contains(point, rooms[r].Boundary)
                     || DistanceToOutline(point, rooms[r].Boundary) < 1f) return false;
             }
             return !NearCorridor(context, point, 1.5f)
-                && !NearEntrance(context, point, EntranceClearance + 1f);
+                && !NearEntrance(context, point, EntranceClearance + 1f)
+                && InGreen(context, point);
         }
 
         /// <summary>Informal tree groups inside gardens, islands and deep beds.</summary>

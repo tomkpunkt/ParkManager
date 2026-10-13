@@ -37,6 +37,8 @@ internal static class PlazaFurnishingTests
             // Planting belongs in the beds, everything else stays out.
             if (item.Kind == "Bush" ? !inBed : item.Kind != "Tree" && inBed)
                 errors.Add(item.Kind == "Bush" ? "planting outside a bed" : $"{item.Kind} in a bed");
+            // Trees stand on green, never in the paving.
+            if (item.Kind == "Tree" && !inBed) errors.Add("tree on paving");
         }
         for (var i = 0; i < items.Count; i++)
         for (var k = i + 1; k < items.Count; k++)

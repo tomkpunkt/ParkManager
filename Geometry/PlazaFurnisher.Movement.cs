@@ -5,21 +5,27 @@ namespace ParkManager.Geometry
 {
     internal static partial class PlazaFurnisher
     {
-        private const float WalkCell = 1f;
+        private const float WalkCell = 0.5f;
 
         /// <summary>
         /// A furnished plaza must still work: from every entrance, every
         /// room has to be reachable on a path of at least
-        /// <see cref="PathWidth"/> between objects and beds. Where it is not,
+        /// <see cref="PathWidth"/> between objects and beds. The free area is
+        /// eroded by half that width (plot edge, beds and objects all grow
+        /// by it), so a connection of cell centres is a real corridor of
+        /// full width, not a chain of single cells. Where it is not,
         /// the least important object next to the natural walking line is
         /// taken out, one at a time. Returns how many objects were removed.
         /// </summary>
         private static int KeepWalkable(Context context, out bool walkable)
         {
             var removed = 0;
+            WalkGrid previous = null;
             for (var attempt = 0; attempt < 40; attempt++)
             {
-                var grid = new WalkGrid(context);
+                // Plot edge and beds do not change; only the objects do.
+                var grid = new WalkGrid(context, previous);
+                previous = grid;
                 if (!grid.FindBlocked(context, out var from, out var to))
                 {
                     walkable = true;
@@ -64,31 +70,43 @@ namespace ParkManager.Geometry
             return true;
         }
 
-        /// <summary>Walkable cells of the plaza at 1 m with the current objects.</summary>
+        /// <summary>Walkable cell centres of the eroded free area, at 0.5 m.</summary>
         private sealed class WalkGrid
         {
             private readonly float2 _origin;
             private readonly int _columns;
             private readonly int _rows;
             private readonly bool[] _free;
+            /// <summary>Free cells before any object: plot edge and beds only.</summary>
+            private readonly bool[] _ground;
 
-            internal WalkGrid(Context context)
+            internal WalkGrid(Context context, WalkGrid ground)
             {
                 var geometry = context.Geometry;
                 PolygonMath.Bounds(geometry.Polygon, out var min, out var max);
                 _origin = min;
                 _columns = (int)math.ceil((max.x - min.x) / WalkCell) + 1;
                 _rows = (int)math.ceil((max.y - min.y) / WalkCell) + 1;
-                _free = new bool[_columns * _rows];
-                for (var index = 0; index < _free.Length; index++)
-                {
-                    var point = Center(index);
-                    _free[index] = geometry.Contains(point)
-                        && geometry.DistanceToBoundary(point) >= 0.4f;
-                }
-                foreach (var zone in context.Design.GreenZones)
-                    Mark(zone.Polygon);
                 var half = PathWidth * 0.5f;
+                if (ground != null)
+                {
+                    _ground = ground._ground;
+                    _free = (bool[])_ground.Clone();
+                }
+                else
+                {
+                    // Inside the plot, minus a band of half a path along its
+                    // edge and around every bed.
+                    _free = new bool[_columns * _rows];
+                    Fill(geometry.Polygon, true);
+                    Stamp(geometry.Polygon, half);
+                    foreach (var zone in context.Design.GreenZones)
+                    {
+                        Fill(zone.Polygon, false);
+                        Stamp(zone.Polygon, half);
+                    }
+                    _ground = (bool[])_free.Clone();
+                }
                 foreach (var occupied in context.Placed)
                     MarkDisc(occupied.Position, occupied.Radius + half);
             }
@@ -103,16 +121,38 @@ namespace ParkManager.Geometry
                 return x < 0 || y < 0 || x >= _columns || y >= _rows ? -1 : y * _columns + x;
             }
 
-            private void Mark(List<float2> polygon)
+            /// <summary>Sets every cell whose centre lies inside the polygon (scanline).</summary>
+            private void Fill(IReadOnlyList<float2> polygon, bool value)
             {
-                PolygonMath.Bounds(polygon, out var min, out var max);
-                for (var y = min.y; y <= max.y + WalkCell; y += WalkCell)
-                for (var x = min.x; x <= max.x + WalkCell; x += WalkCell)
+                var crossings = new List<float>();
+                for (var row = 0; row < _rows; row++)
                 {
-                    var cell = Cell(new float2(x, y));
-                    if (cell >= 0 && PolygonMath.PointInside(Center(cell), polygon))
-                        _free[cell] = false;
+                    var y = _origin.y + row * WalkCell;
+                    crossings.Clear();
+                    for (var i = 0; i < polygon.Count; i++)
+                    {
+                        var a = polygon[i];
+                        var b = polygon[(i + 1) % polygon.Count];
+                        if (a.y <= y == b.y <= y) continue;
+                        crossings.Add(a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y));
+                    }
+                    crossings.Sort();
+                    for (var k = 0; k + 1 < crossings.Count; k += 2)
+                    {
+                        var first = math.max(0, (int)math.ceil((crossings[k] - _origin.x) / WalkCell));
+                        var last = math.min(_columns - 1,
+                            (int)math.floor((crossings[k + 1] - _origin.x) / WalkCell));
+                        for (var column = first; column <= last; column++)
+                            _free[row * _columns + column] = value;
+                    }
                 }
+            }
+
+            /// <summary>Blocks a band of the given width along the outline.</summary>
+            private void Stamp(IReadOnlyList<float2> polygon, float radius)
+            {
+                foreach (var point in PlazaShape.Densify(polygon, WalkCell * 0.5f))
+                    MarkDisc(point, radius);
             }
 
             private void MarkDisc(float2 center, float radius)

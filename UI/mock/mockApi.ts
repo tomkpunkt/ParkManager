@@ -42,6 +42,7 @@ export const scenario = (kind: 'empty' | 'outline' | 'paths' | 'decorated' | 'pl
     'ParkManager.PlazaCenterpieceSpacing': 20,
     'ParkManager.PlazaArrangementSpacing': 4,
     'ParkManager.PlazaFenceEnabled': false,
+    'ParkManager.PlazaDesignStyle': -1,
     'ParkManager.PathBuildSummary': '', 'ParkManager.PathBuildStatus': 'ok',
     'ParkManager.DecorationSummary': '',
     'ParkManager.PlazaCenterSelected': plaza ? 'Mock Fountain' : '',
@@ -72,6 +73,7 @@ export const trigger = (scope: string, action: string, payload?: any) => {
     case 'SetPlazaCenterpieceSpacing': set('PlazaCenterpieceSpacing', payload); replanPlaza(); break;
     case 'SetPlazaArrangementSpacing': set('PlazaArrangementSpacing', payload); replanPlaza(); break;
     case 'SetPlazaFenceEnabled': set('PlazaFenceEnabled', payload); replanPlaza(); break;
+    case 'SetPlazaDesignStyle': set('PlazaDesignStyle', payload); replanPlaza(); break;
     case 'SelectPlazaCenter': set('PlazaCenterSelected', payload); replanPlaza(); break;
     case 'GeneratePaths': set('PathBuildStatus', 'ok'); if (get('SiteType') === 1) { generatePlaza(); break; } seed++; set('PathPlanReady', true); set('DecorationPlanReady', true); set('PathBuildSummary', `Mock-Seed ${seed}`); recalculate(); break;
     case 'BuildPark': void buildEntirePark(); break;

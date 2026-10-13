@@ -155,6 +155,15 @@ namespace ParkManager.Tools
             var centerRadius = !useCenter ? 0f
                 : _assetCatalog.TryGetPlanarRadius(centerPrefab, out var measured)
                     ? math.max(measured, 2f) : 4f;
+            if (_plazaDesignStyle >= 0)
+            {
+                var composed = PlanComposedPlaza(useCenter, centerRadius);
+                if (composed != null)
+                {
+                    useCenter = composed.HasCenterpiece;
+                    return composed;
+                }
+            }
             return PlazaPlanner.Generate(_points, EntrancePoints(), centerRadius,
                 _plazaCenterPlacement, _plazaArrangementPlacement,
                 _plazaCenterpieceSpacing, _plazaArrangementSpacing,
@@ -235,6 +244,20 @@ namespace ParkManager.Tools
             var next = math.clamp(value, 0, 20);
             if (math.abs(_plazaArrangementSpacing - next) < 0.01f) return;
             _plazaArrangementSpacing = next;
+            ApplyPlazaSettings();
+        }
+
+        /// <summary>
+        /// Experimental: -1 keeps the classic arrangement planner, any other
+        /// value composes the plaza in that <see cref="PlazaStyle"/>.
+        /// </summary>
+        internal void SetPlazaDesignStyle(int value)
+        {
+            if (!CanChangePlazaSettings()) return;
+            var next = value < 0 || value > (int)PlazaStyle.Natural ? -1 : value;
+            if (_plazaDesignStyle == next) return;
+            _plazaDesignStyle = next;
+            _ui?.SetPlazaDesignStyle(next);
             ApplyPlazaSettings();
         }
 

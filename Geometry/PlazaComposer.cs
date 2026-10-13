@@ -512,6 +512,26 @@ namespace ParkManager.Geometry
             return math.sqrt(best);
         }
 
+        /// <summary>Point of the outline closest to the given point.</summary>
+        internal static float2 ClosestOnOutline(float2 point, IReadOnlyList<float2> outline)
+        {
+            var best = outline[0];
+            var bestDistance = float.MaxValue;
+            for (var i = 0; i < outline.Count; i++)
+            {
+                var a = outline[i];
+                var b = outline[(i + 1) % outline.Count];
+                var ab = b - a;
+                var t = math.saturate(math.dot(point - a, ab) / math.max(1e-6f, math.lengthsq(ab)));
+                var candidate = a + ab * t;
+                var distance = math.distancesq(point, candidate);
+                if (distance >= bestDistance) continue;
+                bestDistance = distance;
+                best = candidate;
+            }
+            return best;
+        }
+
         private static int StrongestDesireLine(PlazaMovement movement)
         {
             var best = 0;

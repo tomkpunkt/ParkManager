@@ -45,6 +45,7 @@ namespace ParkManager.Tools
         private ValueBinding<int> _plazaCenterpieceSpacing;
         private ValueBinding<int> _plazaArrangementSpacing;
         private ValueBinding<bool> _plazaFenceEnabled;
+        private ValueBinding<int> _plazaDesignStyle;
         private ValueBinding<string> _plazaCenterOptionsJson;
         private ValueBinding<string> _plazaCenterSelected;
         private ValueBinding<string> _plazaArrangementJson;
@@ -116,6 +117,8 @@ namespace ParkManager.Tools
                 Group, "PlazaArrangementSpacing", 4));
             AddBinding(_plazaFenceEnabled = new ValueBinding<bool>(
                 Group, "PlazaFenceEnabled", false));
+            AddBinding(_plazaDesignStyle = new ValueBinding<int>(
+                Group, "PlazaDesignStyle", -1));
             AddBinding(_plazaCenterOptionsJson = new ValueBinding<string>(
                 Group, "PlazaCenterOptionsJson", "[]"));
             AddBinding(_plazaCenterSelected = new ValueBinding<string>(
@@ -177,6 +180,8 @@ namespace ParkManager.Tools
                 value => Tool.SetPlazaArrangementSpacing(value)));
             AddBinding(new TriggerBinding<bool>(Group, "SetPlazaFenceEnabled",
                 value => Tool.SetPlazaFenceEnabled(value)));
+            AddBinding(new TriggerBinding<int>(Group, "SetPlazaDesignStyle",
+                value => Tool.SetPlazaDesignStyle(value)));
             AddBinding(new TriggerBinding<string>(Group, "SelectPlazaCenter",
                 value => Tool.SelectPlazaCenter(value)));
             AddBinding(new TriggerBinding<string>(Group, "EditPlazaArrangement",
@@ -271,6 +276,8 @@ namespace ParkManager.Tools
             _plazaArrangementSpacing?.Update(arrangementSpacing);
             _plazaFenceEnabled?.Update(fenceEnabled);
         }
+
+        internal void SetPlazaDesignStyle(int style) => _plazaDesignStyle?.Update(style);
 
         internal void SetPlazaArrangement(string json)
             => _plazaArrangementJson?.Update(json ?? "[]");

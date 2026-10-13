@@ -27,6 +27,8 @@ namespace ParkManager.Geometry
         {
             internal float2 Position;
             internal float Radius;
+            /// <summary>Crown radius of a tree, 0 for everything else.</summary>
+            internal float Crown;
             internal int Motif;
             internal bool Centerpiece;
         }
@@ -42,7 +44,8 @@ namespace ParkManager.Geometry
             internal readonly List<Occupied> Placed = new List<Occupied>();
         }
 
-        internal static PlazaFurnishing Furnish(PlazaDesign design, PlazaPalette palette, int seed)
+        internal static PlazaFurnishing Furnish(PlazaDesign design, PlazaPalette palette, int seed,
+            IReadOnlyList<PlazaFurniturePlacement> preset = null)
         {
             var timer = System.Diagnostics.Stopwatch.StartNew();
             var result = new PlazaFurnishing();
@@ -56,6 +59,7 @@ namespace ParkManager.Geometry
                 Design = design, Geometry = design.Geometry, Movement = design.Movement,
                 Palette = palette ?? PlazaPalette.Default(), Seed = seed, Motifs = result.Motifs,
             };
+            AddPreset(context, preset);
             ResolveMotifs(context);
             // Stable by priority: the order of resolution breaks ties.
             var order = new List<int>();
@@ -65,13 +69,33 @@ namespace ParkManager.Geometry
                 var priority = result.Motifs[a].Priority.CompareTo(result.Motifs[b].Priority);
                 return priority != 0 ? priority : a.CompareTo(b);
             });
-            foreach (var index in order) Solve(context, index);
+            foreach (var index in order)
+                if (result.Motifs[index].Kind != PlazaMotifKind.Preset) Solve(context, index);
             MatchPartners(context);
             result.RemovedForMovement = KeepWalkable(context, out result.Walkable);
             result.Plan = BuildPlan(context);
             timer.Stop();
             result.Milliseconds = timer.Elapsed.TotalMilliseconds;
             return result;
+        }
+
+        /// <summary>Given objects stand first; the design works around them.</summary>
+        private static void AddPreset(Context context, IReadOnlyList<PlazaFurniturePlacement> preset)
+        {
+            if (preset == null || preset.Count == 0) return;
+            var motif = new PlazaMotif
+            {
+                Kind = PlazaMotifKind.Preset, Item = preset[0].Kind, Room = -1, Priority = 9,
+            };
+            context.Motifs.Add(motif);
+            foreach (var placement in preset)
+            {
+                var copy = placement;
+                copy.ArrangementId = 0;
+                motif.Placements.Add(copy);
+                context.Placed.Add(new Occupied
+                    { Position = copy.Position, Radius = copy.FootprintRadius, Motif = 0 });
+            }
         }
 
         private static PlazaPlan EmptyPlan(int seed) => new PlazaPlan(seed,
@@ -164,19 +188,36 @@ namespace ParkManager.Geometry
 
         // ------------------------------------------------------ constraints
 
+        /// <summary>Most a crown may reach beyond the plot, as share of its radius.</summary>
+        private const float CrownOverhang = 0.4f;
+        /// <summary>Closest two crowns may come, as share of their mean diameter.</summary>
+        private const float CrownSeparation = 0.6f;
+
         /// <summary>
         /// Hard rules for one object: on the plot, clear of the boundary, of
-        /// corridors, of entrances, of green (except trees), of everything
-        /// already placed, and trees out of the sight lines to the focal point.
+        /// corridors, of entrances, of green (except trees and planting), of
+        /// everything already placed, and trees out of the sight lines to the
+        /// focal point. A tree is checked in three parts: its trunk and pit
+        /// must stand on free ground, its crown may overhang paving and, a
+        /// little, the plot edge, and crowns may touch but not merge.
         /// </summary>
         private static bool Valid(Context context, float2 point, float radius,
-            PlazaFurnitureKind item, PlazaMotifKind motif, bool centerpiece = false)
+            PlazaFurnitureKind item, PlazaMotifKind motif, bool centerpiece = false,
+            float crown = 0f)
         {
             var geometry = context.Geometry;
             var design = context.Design;
             if (!geometry.Contains(point) || geometry.DistanceToBoundary(point) < radius + 0.3f)
                 return false;
-            if (item != PlazaFurnitureKind.Tree || centerpiece)
+            if (crown > 0f)
+            {
+                if (geometry.DistanceToBoundary(point) < crown * (1f - CrownOverhang)) return false;
+                foreach (var other in context.Placed)
+                    if (other.Crown > 0f && math.distance(point, other.Position)
+                        < (crown + other.Crown) * CrownSeparation) return false;
+            }
+            var planted = item == PlazaFurnitureKind.Tree || motif == PlazaMotifKind.BedPlanting;
+            if (!planted || centerpiece)
                 foreach (var zone in design.GreenZones)
                     if (PolygonMath.PointInside(point, zone.Polygon)
                         || PlazaComposer.DistanceToOutline(point, zone.Polygon) < radius + 0.2f)

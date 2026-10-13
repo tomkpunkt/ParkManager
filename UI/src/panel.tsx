@@ -10,7 +10,7 @@ import {
   pathType$, plannerMode$, pointCount$,
   plazaArrangementPlacement$, plazaArrangementSpacing$,
   plazaCenterOptionsJson$, plazaCenterSelected$, plazaCenterPlacement$,
-  plazaCenterpieceSpacing$, plazaFenceEnabled$,
+  plazaCenterpieceSpacing$, plazaDesignStyle$, plazaFenceEnabled$,
   polygonArea$, polygonClosed$, polygonValid$, removeBuiltPaths, removeMode$,
   removeSelectedPark, removeSelectionCount$, setPlannerMode, setRemoveMode,
   setSiteType, siteType$, toggleTool, vegetationDensity$,
@@ -62,6 +62,7 @@ export const ParkManagerPanel = () => {
   const plazaCenterpieceSpacing = useValue(plazaCenterpieceSpacing$);
   const plazaArrangementSpacing = useValue(plazaArrangementSpacing$);
   const plazaFenceEnabled = useValue(plazaFenceEnabled$);
+  const plazaDesignStyle = useValue(plazaDesignStyle$);
   const plazaCenterOptions = parsePlazaCenterOptions(
     useValue(plazaCenterOptionsJson$));
   const plazaCenterSelected = useValue(plazaCenterSelected$);
@@ -198,7 +199,8 @@ export const ParkManagerPanel = () => {
           arrangementPlacement={plazaArrangementPlacement}
           centerpieceSpacing={plazaCenterpieceSpacing}
           arrangementSpacing={plazaArrangementSpacing}
-          fenceEnabled={plazaFenceEnabled} density={furnitureDensity}
+          fenceEnabled={plazaFenceEnabled} designStyle={plazaDesignStyle}
+          density={furnitureDensity}
           pathPlanReady={pathPlanReady} decorationPlanReady={decorationPlanReady}
           structureLocked={structureLocked} furnishingLocked={furnishingLocked}
           canPlan={canPlan}

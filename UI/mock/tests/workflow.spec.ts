@@ -345,7 +345,25 @@ test('plaza tile rows keep two rows and scroll instead of clipping', async ({ pa
   await expect(page.getByTestId('plaza-center-placement').locator('button svg'))
     .toHaveCount(3);
   await expect(page.getByTestId('plaza-arrangement-placement').locator('button svg'))
-    .toHaveCount(2);
+    .toHaveCount(8);
+});
+
+test('the experimental plaza design replaces the arrangement settings', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'plaza', exact: true }).click();
+  // Two classic arrangements, then the six composer styles.
+  const choices = page.getByTestId('plaza-arrangement-placement').locator('button');
+  await expect(choices).toHaveCount(8);
+  // The classic arrangement stays the default.
+  await expect(choices.first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('plaza-center-placement').locator('button').first()).toBeEnabled();
+  await choices.nth(3).click();
+  await expect(choices.nth(3)).toHaveAttribute('aria-pressed', 'true');
+  await expect(choices.first()).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('plaza-center-placement').locator('button').first()).toBeDisabled();
+  await choices.nth(1).click();
+  await expect(choices.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('plaza-center-placement').locator('button').first()).toBeEnabled();
 });
 
 test('park and plaza surface tiles share one size', async ({ page }) => {

@@ -24,6 +24,8 @@ export const plazaArrangementPlacement$ = bindValue<number>(MOD, "PlazaArrangeme
 export const plazaCenterpieceSpacing$ = bindValue<number>(MOD, "PlazaCenterpieceSpacing", 20);
 export const plazaArrangementSpacing$ = bindValue<number>(MOD, "PlazaArrangementSpacing", 4);
 export const plazaFenceEnabled$ = bindValue<boolean>(MOD, "PlazaFenceEnabled", false);
+/** Experimental plaza composer: -1 = classic arrangement, otherwise a PlazaStyle. */
+export const plazaDesignStyle$ = bindValue<number>(MOD, "PlazaDesignStyle", -1);
 export const plazaCenterOptionsJson$ = bindValue<string>(MOD, "PlazaCenterOptionsJson", "[]");
 export const plazaCenterSelected$ = bindValue<string>(MOD, "PlazaCenterSelected", "");
 export const plazaArrangementJson$ = bindValue<string>(MOD, "PlazaArrangementJson", "[]");
@@ -56,6 +58,8 @@ export const setPlazaArrangementSpacing = (value: number) =>
   trigger(MOD, "SetPlazaArrangementSpacing", value);
 export const setPlazaFenceEnabled = (value: boolean) =>
   trigger(MOD, "SetPlazaFenceEnabled", value);
+export const setPlazaDesignStyle = (value: number) =>
+  trigger(MOD, "SetPlazaDesignStyle", value);
 export const selectPlazaCenter = (name: string) =>
   trigger(MOD, "SelectPlazaCenter", name);
 export const editPlazaArrangement = (command: string) =>

@@ -25,6 +25,18 @@ namespace ParkManager.Geometry
         LampRhythm = 6,
         /// <summary>A pair of lamps marking an entrance.</summary>
         EntranceLamps = 7,
+        /// <summary>
+        /// Two or three benches side by side with one shared orientation,
+        /// on the paving where it meets a garden (informal seating).
+        /// </summary>
+        SeatingGroup = 8,
+        /// <summary>Low planting that gives a bed or island its function.</summary>
+        BedPlanting = 9,
+        /// <summary>
+        /// Objects that are given, not designed (already standing or pinned);
+        /// placed unchecked and the first to go when they block the way.
+        /// </summary>
+        Preset = 10,
     }
 
     /// <summary>One motif with the line or ring it is laid out on.</summary>
@@ -49,6 +61,9 @@ namespace ParkManager.Geometry
         internal float2? FacingPoint;
         /// <summary>Motif that must keep the same count (mirrored avenue), or -1.</summary>
         internal int Partner = -1;
+        /// <summary>The full line before it was cut to the stretch shared with the partner.</summary>
+        internal List<float2> FullLine;
+        internal bool Solved;
         internal readonly List<PlazaFurniturePlacement> Placements =
             new List<PlazaFurniturePlacement>();
         internal readonly List<PlazaCenterpiecePlacement> Centerpieces =
@@ -59,10 +74,15 @@ namespace ParkManager.Geometry
     internal struct PlazaPaletteItem
     {
         internal string AssetName;
-        /// <summary>Collision radius of the object on the ground.</summary>
+        /// <summary>
+        /// Collision radius of the object on the ground; for a tree the
+        /// trunk with its tree pit, not the crown.
+        /// </summary>
         internal float FootprintRadius;
         /// <summary>Approximate visual size (crown diameter for trees).</summary>
         internal float Size;
+        /// <summary>Crown radius seen from above; trees only.</summary>
+        internal float CrownRadius;
     }
 
     /// <summary>The assets a furnishing may use; a missing kind is left out.</summary>
@@ -72,13 +92,19 @@ namespace ParkManager.Geometry
             new Dictionary<PlazaFurnitureKind, PlazaPaletteItem>();
         internal bool Centerpiece = true;
         internal PlazaCenterpieceKind CenterpieceKind = PlazaCenterpieceKind.Fountain;
+        /// <summary>Footprint of the chosen centerpiece asset; 0 lets the square decide.</summary>
+        internal float CenterpieceRadius;
+        /// <summary>Furnishing density: 1 is the grammar's rhythm, 2 halves every spacing.</summary>
+        internal float Density = 1f;
 
         /// <summary>Trees, benches and lamps with typical vanilla footprints.</summary>
         internal static PlazaPalette Default()
         {
             var palette = new PlazaPalette();
             palette.Items[PlazaFurnitureKind.Tree] = new PlazaPaletteItem
-                { AssetName = "Tree", FootprintRadius = 1.2f, Size = 7f };
+                { AssetName = "Tree", FootprintRadius = 0.8f, Size = 7f, CrownRadius = 3.5f };
+            palette.Items[PlazaFurnitureKind.Bush] = new PlazaPaletteItem
+                { AssetName = "Planter", FootprintRadius = 0.9f, Size = 1.8f };
             palette.Items[PlazaFurnitureKind.Bench] = new PlazaPaletteItem
                 { AssetName = "Bench", FootprintRadius = 1f, Size = 2f };
             palette.Items[PlazaFurnitureKind.Lamp] = new PlazaPaletteItem

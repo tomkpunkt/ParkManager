@@ -41,6 +41,7 @@ td.name{max-width:110px;font-weight:bold}
     <span><i style="background:#d9474b;border-radius:7px"></i>Fokus</span>
     <span><i style="background:#6b4a2b"></i>Bank</span>
     <span><i style="background:#ffd34d;border-radius:7px"></i>Laterne</span>
+    <span><i style="background:#c77dba"></i>Pflanzkübel</span>
     <span><i style="background:#4aa3df;border-radius:7px"></i>Brunnen</span>
     <span>Kanten: <i style="background:#2f6b38"></i>Bäume <i style="background:#5fbf4a"></i>Grün <i style="background:#e0893a"></i>Sitzen <i style="background:#7d7d8a"></i>Bau <i style="background:#5cc9fa"></i>offen</span>
   </div>
@@ -119,6 +120,8 @@ function svg(c) {
       s += `<polygon points="${pts(corners)}" fill="#6b4a2b" stroke="#f0d9b5" stroke-width="${u * 0.4}"/>`
         + `<line x1="${b.x}" y1="${b.y}" x2="${b.x + fx * 1.2}" y2="${b.y + fy * 1.2}" stroke="#f0d9b5" stroke-width="${u * 0.4}"/>`;
     }
+    for (const p of f.furniture) if (p.kind === 'Bush')
+      s += `<rect x="${p.x - p.radius}" y="${p.y - p.radius}" width="${p.radius * 2}" height="${p.radius * 2}" rx="${p.radius * 0.3}" fill="#c77dba" stroke="#5b2f55" stroke-width="${u * 0.4}"/>`;
     for (const l of f.furniture) if (l.kind === 'Lamp')
       s += `<circle cx="${l.x}" cy="${l.y}" r="${Math.max(0.6, u * 1.6)}" fill="#ffd34d" stroke="#5a4500" stroke-width="${u * 0.4}"/>`;
   }
@@ -130,6 +133,7 @@ function svg(c) {
 function furnitureSummary(f) {
   const count = (kind) => f.furniture.filter((x) => x.kind === kind).length;
   return `${count('Tree')} Bäume · ${count('Bench')} Bänke · ${count('Lamp')} Laternen`
+    + (count('Bush') ? ` · ${count('Bush')} Kübel` : '')
     + (f.centerpieces.length ? ' · Brunnen' : '')
     + ` · ${f.walkable ? 'begehbar' : '<b style="color:#ff9b8a">blockiert</b>'}`
     + (f.removed ? ` (${f.removed} entfernt)` : '') + ` · ${f.milliseconds.toFixed(1)} ms`;

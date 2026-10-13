@@ -12,6 +12,7 @@ namespace ParkManager.Geometry
         private const int RingPriority = 2;
         private const int SeatingPriority = 3;
         private const int GrovePriority = 4;
+        private const int PlantingPriority = 4;
         private const int LampPriority = 5;
 
         /// <summary>
@@ -34,8 +35,10 @@ namespace ParkManager.Geometry
             if (has(PlazaFurnitureKind.Bench))
             {
                 AddSeatingEdges(context);
+                if (design.Grammar == PlazaGrammar.Natural) AddSeatingGroups(context);
                 AddQuietSeating(context);
             }
+            if (has(PlazaFurnitureKind.Bush)) AddBedPlanting(context);
             if (has(PlazaFurnitureKind.Lamp))
             {
                 AddEntranceLamps(context);
@@ -64,20 +67,22 @@ namespace ParkManager.Geometry
             var focal = design.FocalPoints[0];
             var main = design.Rooms[0];
             if (focal.Clearance < 5f || PlazaShape.Area(main.Boundary) < 500f) return;
-            var radius = math.clamp(focal.Clearance * 0.28f, 1.8f, 5f);
+            var chosen = context.Palette.CenterpieceRadius;
+            // The chosen asset has its own size; it needs a walk around it.
+            if (chosen > 0f && focal.Clearance < chosen + CenterpieceWalk + 1.5f) return;
+            var radius = chosen > 0f ? chosen : math.clamp(focal.Clearance * 0.28f, 1.8f, 5f);
             var motif = NewMotif(context, PlazaMotifKind.Centerpiece, PlazaFurnitureKind.Bench,
                 0, CenterpiecePriority);
             motif.Line.Add(focal.Position);
             motif.Spacing = radius;
 
-            if (!context.Palette.Items.ContainsKey(PlazaFurnitureKind.Bench)) return;
-            // Benches around it: on the axes (classic), an open arc on one
-            // side (modern) or loosely spread (natural).
+            // Benches around it: on the axes (classic) or an open arc on one
+            // side (modern). Natural squares sit at the gardens instead.
+            if (!context.Palette.Items.ContainsKey(PlazaFurnitureKind.Bench)
+                || design.Grammar == PlazaGrammar.Natural) return;
             var angles = design.Grammar == PlazaGrammar.Classic
                 ? new[] { 0f, 90f, 180f, 270f }
-                : design.Grammar == PlazaGrammar.Modern
-                    ? new[] { 140f, 180f, 220f }
-                    : new[] { 35f, 155f, 265f };
+                : new[] { 140f, 180f, 220f };
             var ring = NewMotif(context, PlazaMotifKind.SeatingRing, PlazaFurnitureKind.Bench,
                 0, RingPriority);
             ring.FacingPoint = focal.Position;
@@ -91,7 +96,10 @@ namespace ParkManager.Geometry
 
         /// <summary>
         /// Every tree row of the design becomes an avenue. Classic rows that
-        /// mirror each other across the main square keep the same count.
+        /// face each other across the main square are optimised together:
+        /// both are cut to the stretch they share, so they get the same
+        /// count and the same rhythm, even when an entrance interrupts one
+        /// of them. Modern and natural rows may stay asymmetric.
         /// </summary>
         private static void AddAvenues(Context context)
         {
@@ -119,14 +127,44 @@ namespace ParkManager.Geometry
                 var d2 = two.Line[1] - two.Line[0];
                 var l1 = math.length(d1);
                 var l2 = math.length(d2);
-                if (math.abs(math.dot(d1 / l1, d2 / l2)) < 0.98f
-                    || math.min(l1, l2) < math.max(l1, l2) * 0.85f) continue;
-                var m1 = (one.Line[0] + one.Line[1]) * 0.5f;
-                var m2 = (two.Line[0] + two.Line[1]) * 0.5f;
-                if (math.distance(m1 + m2, center * 2f) > 3f) continue;
+                var direction = d1 / l1;
+                if (math.abs(math.dot(direction, d2 / l2)) < 0.98f) continue;
+                // Opposite sides of the square, at a similar distance.
+                var normal = new float2(-direction.y, direction.x);
+                var s1 = math.dot((one.Line[0] + one.Line[1]) * 0.5f - center, normal);
+                var s2 = math.dot((two.Line[0] + two.Line[1]) * 0.5f - center, normal);
+                // One row may stand in tree pits inside the square, the other
+                // in the rim outside it; both still frame the same room.
+                var tolerance = math.max(3f, 0.6f * math.max(math.abs(s1), math.abs(s2)));
+                if (s1 * s2 >= 0f || math.abs(math.abs(s1) - math.abs(s2)) > tolerance) continue;
+                // The stretch both rows cover along the axis.
+                var from = math.max(Along(one, direction, center, true),
+                    Along(two, direction, center, true));
+                var to = math.min(Along(one, direction, center, false),
+                    Along(two, direction, center, false));
+                if (to - from < one.Spacing * 2f) continue;
+                one.FullLine = new List<float2>(one.Line);
+                two.FullLine = new List<float2>(two.Line);
+                CutTo(one, direction, center, from, to);
+                CutTo(two, direction, center, from, to);
                 one.Partner = b;
                 two.Partner = a;
             }
+        }
+
+        private static float Along(PlazaMotif motif, float2 direction, float2 center, bool start)
+        {
+            var a = math.dot(motif.Line[0] - center, direction);
+            var b = math.dot(motif.Line[1] - center, direction);
+            return start ? math.min(a, b) : math.max(a, b);
+        }
+
+        private static void CutTo(PlazaMotif motif, float2 direction, float2 center,
+            float from, float to)
+        {
+            var origin = motif.Line[0] - direction * math.dot(motif.Line[0] - center, direction);
+            motif.Line[0] = origin + direction * from;
+            motif.Line[1] = origin + direction * to;
         }
 
         /// <summary>Informal groups of trees inside the green zones meant for them.</summary>
@@ -137,7 +175,9 @@ namespace ParkManager.Geometry
             {
                 var polygon = design.TreeGroups[g];
                 var area = PlazaShape.Area(polygon);
-                var count = math.clamp((int)math.round(area / 70f), 2, 5);
+                var count = math.clamp((int)math.round(area / 70f * context.Palette.Density), 2, 6);
+                var crown = context.Palette.Items[PlazaFurnitureKind.Tree].CrownRadius;
+                var apartBy = math.max(4.5f, crown * 1.2f);
                 var motif = NewMotif(context, PlazaMotifKind.Grove, PlazaFurnitureKind.Tree,
                     -1, GrovePriority);
                 PolygonMath.Bounds(polygon, out var min, out var max);
@@ -157,7 +197,7 @@ namespace ParkManager.Geometry
                         || PlazaComposer.DistanceToOutline(point, polygon) < 1.5f) continue;
                     var apart = true;
                     foreach (var other in motif.Line)
-                        apart &= math.distance(point, other) >= 4.5f;
+                        apart &= math.distance(point, other) >= apartBy;
                     if (apart) motif.Line.Add(point);
                 }
             }
@@ -182,10 +222,78 @@ namespace ParkManager.Geometry
                 for (var i = 0; i < run; i++)
                     motif.Line.Add(zone.Polygon[i] + zone.Facing * 1.3f);
                 motif.Facing = zone.Facing;
-                motif.Spacing = design.Grammar == PlazaGrammar.Classic ? 6.5f
-                    : design.Grammar == PlazaGrammar.Modern ? 4.2f : 7.5f;
+                motif.Spacing = (design.Grammar == PlazaGrammar.Classic ? 6.5f
+                    : design.Grammar == PlazaGrammar.Modern ? 4.2f : 7.5f) / context.Palette.Density;
                 motif.Margin = 1.5f;
                 motif.MinimumCount = 1;
+            }
+        }
+
+        /// <summary>
+        /// Informal seating for natural squares: two or three benches side by
+        /// side with one shared orientation, on the paving where the main
+        /// square meets a garden, looking out over the square.
+        /// </summary>
+        private static void AddSeatingGroups(Context context)
+        {
+            var design = context.Design;
+            var main = design.Rooms[0];
+            var focus = design.FocalPoints.Count > 0 ? design.FocalPoints[0].Position : main.Center;
+            var bench = context.Palette.Items[PlazaFurnitureKind.Bench];
+            var gardens = new List<PlazaGreenZone>();
+            foreach (var zone in design.GreenZones)
+                if (zone.Kind == PlazaGreenKind.Garden
+                    && PlazaComposer.DistanceToOutline(PlazaComposer.ClosestOnOutline(main.Center,
+                        zone.Polygon), main.Boundary) < 6f)
+                    gardens.Add(zone);
+            gardens.Sort((a, b) => PlazaShape.Area(b.Polygon).CompareTo(PlazaShape.Area(a.Polygon)));
+            for (var g = 0; g < gardens.Count && g < 3; g++)
+            {
+                var edge = PlazaComposer.ClosestOnOutline(main.Center, gardens[g].Polygon);
+                var inward = math.normalizesafe(main.Center - edge);
+                var anchor = edge + inward * (bench.FootprintRadius + 0.8f);
+                var facing = math.normalizesafe(focus - anchor);
+                var along = new float2(-facing.y, facing.x);
+                var motif = NewMotif(context, PlazaMotifKind.SeatingGroup, PlazaFurnitureKind.Bench,
+                    0, SeatingPriority);
+                motif.Facing = facing;
+                var size = g == 0 ? 3 : 2;
+                var step = bench.FootprintRadius * 2f + 0.6f;
+                for (var i = 0; i < size; i++)
+                    motif.Line.Add(anchor + along * ((i - (size - 1) * 0.5f) * step));
+            }
+        }
+
+        /// <summary>
+        /// Low planting gives the formal beds a purpose: planters along the
+        /// spine of a modern island, at the corners of a classic parterre.
+        /// </summary>
+        private static void AddBedPlanting(Context context)
+        {
+            foreach (var zone in context.Design.GreenZones)
+            {
+                if (zone.Polygon.Count != 4) continue;
+                if (zone.Kind == PlazaGreenKind.Island)
+                {
+                    var p = zone.Polygon;
+                    var motif = NewMotif(context, PlazaMotifKind.BedPlanting, PlazaFurnitureKind.Bush,
+                        zone.Room, PlantingPriority);
+                    // Spine: between the midpoints of the two short sides.
+                    var first = math.distance(p[0], p[1]) < math.distance(p[1], p[2]);
+                    motif.Line.Add(first ? (p[0] + p[1]) * 0.5f : (p[1] + p[2]) * 0.5f);
+                    motif.Line.Add(first ? (p[2] + p[3]) * 0.5f : (p[3] + p[0]) * 0.5f);
+                    motif.Spacing = 2.6f / context.Palette.Density;
+                    motif.Margin = 1.2f;
+                    motif.MinimumCount = 2;
+                }
+                else if (zone.Kind == PlazaGreenKind.Parterre)
+                {
+                    var motif = NewMotif(context, PlazaMotifKind.BedPlanting, PlazaFurnitureKind.Bush,
+                        zone.Room, PlantingPriority);
+                    var centre = PlazaGeometry.AreaCentroid(zone.Polygon);
+                    foreach (var corner in zone.Polygon)
+                        motif.Line.Add(corner + math.normalizesafe(centre - corner) * 1.4f);
+                }
             }
         }
 
@@ -269,7 +377,7 @@ namespace ParkManager.Geometry
                 var motif = NewMotif(context, PlazaMotifKind.LampRhythm, PlazaFurnitureKind.Lamp,
                     r, LampPriority);
                 motif.Closed = true;
-                motif.Spacing = spacing;
+                motif.Spacing = spacing / context.Palette.Density;
                 motif.MinimumCount = 2;
                 // Just inside the room edge, counter-clockwise so the
                 // facing direction (into the room) is the tangent's left.
@@ -309,8 +417,13 @@ namespace ParkManager.Geometry
         private static void Solve(Context context, int index)
         {
             var motif = context.Motifs[index];
+            if (motif.Solved) return;
+            motif.Solved = true;
             switch (motif.Kind)
             {
+                case PlazaMotifKind.TreeAvenue when motif.Partner >= 0:
+                    SolvePair(context, index, motif.Partner);
+                    return;
                 case PlazaMotifKind.Centerpiece:
                 {
                     var point = motif.Line[0];
@@ -332,6 +445,9 @@ namespace ParkManager.Geometry
                 case PlazaMotifKind.LampRhythm:
                     SolveLine(context, index, true);
                     return;
+                case PlazaMotifKind.BedPlanting when motif.Line.Count == 2:
+                    SolveLine(context, index, false);
+                    return;
                 default:
                     // Fixed slots: rings, quiet seating, groves, entrance lamps.
                     if (motif.Kind == PlazaMotifKind.SeatingRing && !HasCenterpiece(context))
@@ -339,10 +455,46 @@ namespace ParkManager.Geometry
                     var tangents = new List<float2>();
                     foreach (var point in motif.Line) tangents.Add(float2.zero);
                     var accepted = Accept(context, index, motif.Line, tangents, true);
-                    // An entrance is marked by a pair or not at all.
-                    if (motif.Kind == PlazaMotifKind.EntranceLamps && accepted < 2) Clear(context, index);
+                    // An entrance is marked by a pair or not at all; a seating
+                    // group needs at least two benches to be one.
+                    if ((motif.Kind == PlazaMotifKind.EntranceLamps
+                            || motif.Kind == PlazaMotifKind.SeatingGroup) && accepted < 2)
+                        Clear(context, index);
                     return;
             }
+        }
+
+        /// <summary>
+        /// Mirrored avenues are solved together: the same count at mirrored
+        /// positions on the stretch both rows share. Where that does not fit
+        /// (a passage crosses one of them), each row gets its full line back
+        /// and the counts are matched afterwards.
+        /// </summary>
+        private static void SolvePair(Context context, int a, int b)
+        {
+            var one = context.Motifs[a];
+            var two = context.Motifs[b];
+            two.Solved = true;
+            var length = LineLength(one.Line, false);
+            var tangentsOne = new List<float2>();
+            var tangentsTwo = new List<float2>();
+            for (var n = LineCount(length, one.Spacing, one.Margin, false);
+                 n >= one.MinimumCount; n--)
+            {
+                var slotsOne = LayoutLine(one.Line, false, one.Margin, n, tangentsOne);
+                var slotsTwo = LayoutLine(two.Line, false, two.Margin, n, tangentsTwo);
+                if (!Fits(context, one, slotsOne) || !Fits(context, two, slotsTwo)) continue;
+                Accept(context, a, slotsOne, tangentsOne, false);
+                Accept(context, b, slotsTwo, tangentsTwo, false);
+                return;
+            }
+            foreach (var motif in new[] { one, two })
+            {
+                motif.Line.Clear();
+                motif.Line.AddRange(motif.FullLine);
+            }
+            SolveLine(context, a, false);
+            SolveLine(context, b, false);
         }
 
         private static bool HasCenterpiece(Context context)
@@ -404,10 +556,12 @@ namespace ParkManager.Geometry
 
         private static bool Fits(Context context, PlazaMotif motif, List<float2> slots)
         {
-            var radius = context.Palette.Items[motif.Item].FootprintRadius;
+            var item = context.Palette.Items[motif.Item];
+            var radius = item.FootprintRadius;
             for (var i = 0; i < slots.Count; i++)
             {
-                if (!Valid(context, slots[i], radius, motif.Item, motif.Kind)) return false;
+                if (!Valid(context, slots[i], radius, motif.Item, motif.Kind, false, item.CrownRadius))
+                    return false;
                 for (var k = 0; k < i; k++)
                     if (math.distance(slots[i], slots[k]) < radius * 2f + ItemGap) return false;
             }
@@ -426,7 +580,8 @@ namespace ParkManager.Geometry
             for (var i = 0; i < slots.Count; i++)
             {
                 var point = slots[i];
-                if (check && !Valid(context, point, item.FootprintRadius, motif.Item, motif.Kind))
+                if (check && !Valid(context, point, item.FootprintRadius, motif.Item, motif.Kind,
+                        false, item.CrownRadius))
                     continue;
                 var facing = motif.FacingPoint.HasValue
                     ? math.normalizesafe(motif.FacingPoint.Value - point)
@@ -449,7 +604,10 @@ namespace ParkManager.Geometry
                     Rotation = rotation, Size = size,
                 });
                 context.Placed.Add(new Occupied
-                    { Position = point, Radius = item.FootprintRadius, Motif = index });
+                {
+                    Position = point, Radius = item.FootprintRadius, Crown = item.CrownRadius,
+                    Motif = index,
+                });
                 accepted++;
             }
             return accepted;
@@ -494,7 +652,7 @@ namespace ParkManager.Geometry
                         context.Placed.Add(new Occupied
                         {
                             Position = placement.Position, Radius = placement.FootprintRadius,
-                            Motif = index,
+                            Crown = context.Palette.Items[motif.Item].CrownRadius, Motif = index,
                         });
                     }
                 }

@@ -102,6 +102,7 @@ internal static class PlazaDesignTests
                 furnishing = PlazaFurnishingTests.Describe(furnishing), errors,
             });
         }
+        PlazaFurnishingTests.Stress(failures);
         Console.WriteLine($"Plaza designs: {results.Count} composed, "
             + $"avg {times.Average():F1} ms, max {times.Max():F1} ms; furnished "
             + $"avg {furnishTimes.Average():F1} ms, max {furnishTimes.Max():F1} ms.");

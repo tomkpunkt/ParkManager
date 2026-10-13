@@ -4,17 +4,19 @@ using Unity.Mathematics;
 namespace ParkManager.Geometry
 {
     /// <summary>
-    /// Ground surfaces of a composed plaza, ready to build: green areas as
-    /// their own surfaces and the paving as the rest of the plot. The two
-    /// never overlap (overlapping surfaces render unpredictably in the
-    /// game), and since surfaces have no holes, the paving is split into as
-    /// few simple pieces as possible. Rooms are not separate surfaces: the
-    /// main square, side rooms and passages share one paving; their limits
-    /// stay in the <see cref="PlazaDesign"/>.
+    /// Ground surfaces of a composed plaza, ready to build: green areas, the
+    /// squares (every room but the passages) in their own paving so the
+    /// composition reads in the game, and the surrounding paving as the rest
+    /// of the plot. None overlap (overlapping surfaces render unpredictably
+    /// in the game), and since surfaces have no holes, each paving is split
+    /// into as few simple pieces as possible.
     /// </summary>
     internal sealed class PlazaSurfacePlan
     {
+        /// <summary>The surrounding paving: plot minus squares and green.</summary>
         internal readonly List<List<float2>> Paving = new List<List<float2>>();
+        /// <summary>The squares' own paving, inner beds cut out; empty when not separated.</summary>
+        internal readonly List<List<float2>> Square = new List<List<float2>>();
         internal readonly List<List<float2>> Green = new List<List<float2>>();
     }
 
@@ -30,7 +32,10 @@ namespace ParkManager.Geometry
         /// <summary>Shorter edges are dropped; they are invisible and fragile in the game.</summary>
         internal const float MinimumEdge = 0.05f;
 
-        internal static PlazaSurfacePlan Compose(IReadOnlyList<float2> plot, PlazaDesign design)
+        /// <param name="squares">Give the squares their own paving; otherwise
+        /// squares and surroundings share one.</param>
+        internal static PlazaSurfacePlan Compose(IReadOnlyList<float2> plot, PlazaDesign design,
+            bool squares = true)
         {
             var plan = new PlazaSurfacePlan();
             var outline = Counterclockwise(plot);
@@ -44,27 +49,70 @@ namespace ParkManager.Geometry
                     green = DropSpikes(green);
                     // Flush to the edge only where nobody walks or arrives.
                     var flush = SnapToPlot(green, outline);
-                    if (KeepsAccess(flush, design)) green = flush;
+                    if (KeepsAccess(flush, design) && KeepsOutOfRooms(flush, green, design))
+                        green = flush;
                     if (green.Count < 3 || PlazaShape.Area(green) < MinimumGreenArea
                         || !StrictlySimple(green)) continue;
                     plan.Green.Add(green);
                 }
             var axis = math.normalizesafe(design != null && design.Rooms.Count > 0
                 ? design.Rooms[0].Axis : new float2(1f, 0f));
-            if (plan.Green.Count == 0) plan.Paving.Add(outline);
-            else
+            var rooms = new List<List<float2>>();
+            if (squares && design != null)
+                foreach (var room in design.Rooms)
+                {
+                    if (room.Role == PlazaRoomRole.Passage) continue;
+                    var ring = DropShortEdges(Clean(Counterclockwise(room.Boundary)));
+                    if (ring.Count >= 3 && StrictlySimple(ring)) rooms.Add(ring);
+                }
+            // Each square minus the beds inside it and the squares before it
+            // (a pocket may overlap the space it opens onto).
+            for (var r = 0; r < rooms.Count; r++)
             {
-                // Same-material pieces show a seam in the game: cut along or
-                // across the square's axis, whichever leaves less seam.
-                var along = Difference(outline, plan.Green, axis);
-                var across = Difference(outline, plan.Green, new float2(-axis.y, axis.x));
-                plan.Paving.AddRange(SeamLength(across) < SeamLength(along) - 0.5f ? across : along);
+                var room = rooms[r];
+                var inner = new List<List<float2>>();
+                foreach (var green in plan.Green)
+                    if (Overlaps(room, green)) inner.Add(green);
+                for (var earlier = 0; earlier < r; earlier++)
+                    if (Overlaps(room, rooms[earlier])) inner.Add(rooms[earlier]);
+                plan.Square.AddRange(inner.Count == 0 ? new List<List<float2>> { room }
+                    : LeastSeams(room, inner, axis));
             }
+            // The surroundings: the plot minus squares and green.
+            // Holes are the square pieces, not the raw rooms: they no longer
+            // overlap each other, they only meet.
+            var holes = new List<List<float2>>(plan.Green);
+            holes.AddRange(plan.Square);
+            if (holes.Count == 0) plan.Paving.Add(outline);
+            else plan.Paving.AddRange(LeastSeams(outline, holes, axis));
             // The game lays a surface's pattern along its first edge: every
             // surface starts with the edge running most along the axis.
-            for (var i = 0; i < plan.Paving.Count; i++) plan.Paving[i] = StartAlong(plan.Paving[i], axis);
-            for (var i = 0; i < plan.Green.Count; i++) plan.Green[i] = StartAlong(plan.Green[i], axis);
+            foreach (var list in new[] { plan.Paving, plan.Square, plan.Green })
+                for (var i = 0; i < list.Count; i++) list[i] = StartAlong(list[i], axis);
             return plan;
+        }
+
+        /// <summary>
+        /// Same-material pieces show a seam in the game: cut along or across
+        /// the square's axis, whichever leaves less seam.
+        /// </summary>
+        private static List<List<float2>> LeastSeams(List<float2> outer,
+            List<List<float2>> holes, float2 axis)
+        {
+            var along = Difference(outer, holes, axis);
+            var across = Difference(outer, holes, new float2(-axis.y, axis.x));
+            return SeamLength(across) < SeamLength(along) - 0.5f ? across : along;
+        }
+
+        /// <summary>True when the bounding boxes meet and a corner of one lies in the other.</summary>
+        private static bool Overlaps(List<float2> a, List<float2> b)
+        {
+            PolygonMath.Bounds(a, out var minA, out var maxA);
+            PolygonMath.Bounds(b, out var minB, out var maxB);
+            if (math.any(maxA < minB) || math.any(maxB < minA)) return false;
+            foreach (var point in b) if (PolygonMath.PointInside(point, a)) return true;
+            foreach (var point in a) if (PolygonMath.PointInside(point, b)) return true;
+            return false;
         }
 
         /// <summary>Total length of the cut edges (vertical in the cut frame) between pieces.</summary>
@@ -211,6 +259,25 @@ namespace ParkManager.Geometry
                     if (PolygonMath.PointInside(entrance, green)
                         || PlazaComposer.DistanceToOutline(entrance, green) < EntranceKeep)
                         return false;
+            return true;
+        }
+
+        /// <summary>Laying green to the edge may not push it into a room it was not in.</summary>
+        private static bool KeepsOutOfRooms(List<float2> flush, List<float2> green, PlazaDesign design)
+        {
+            if (design == null) return true;
+            foreach (var room in design.Rooms)
+            {
+                if (room.Role == PlazaRoomRole.Passage) continue;
+                var before = false;
+                foreach (var point in green)
+                    before |= room.Shape.Contains(point, room.Boundary);
+                if (before) continue;
+                foreach (var point in PlazaShape.Densify(flush, 0.5f))
+                    if (room.Shape.Contains(point, room.Boundary)) return false;
+                foreach (var point in room.Boundary)
+                    if (PolygonMath.PointInside(point, flush)) return false;
+            }
             return true;
         }
 

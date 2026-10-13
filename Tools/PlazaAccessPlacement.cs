@@ -267,11 +267,9 @@ namespace ParkManager.Tools
                         _plazaAccessPrefab);
                     var surface = _plazaSurfacesComposed ? Entity.Null
                         : FindParkSurfaceArea(_tempAreaQuery, _parkSurfacePrefab);
-                    var surfaceCount = _plazaSurfacesComposed
-                        ? CountOwnTempEntities(_tempAreaQuery, _parkSurfacePrefab)
-                            + CountOwnTempEntities(_tempAreaQuery, _plazaGreenPrefab)
+                    var surfaceCount = _plazaSurfacesComposed ? CountComposedTemps()
                         : surface != Entity.Null ? 1 : 0;
-                    var expectedSurfaces = _expectedParkSurfaceAreas + _expectedPlazaGreenAreas;
+                    var expectedSurfaces = _expectedParkSurfaceAreas;
                     if (area >= 1 && markers >= _expectedAccessMarkers
                         && surfaceCount >= expectedSurfaces)
                     {
@@ -285,11 +283,7 @@ namespace ParkManager.Tools
                             _tempPlazaAccessQuery, _plazaAccessPrefab,
                             ParkPathMemberKind.AccessMarker, ref nextId);
                         var attachedSurface = _plazaSurfacesComposed
-                            ? TagPlazaTempEntities(_tempAreaQuery, _parkSurfacePrefab,
-                                    ParkPathMemberKind.ParkSurface, ref nextId)
-                                + TagPlazaTempEntities(_tempAreaQuery, _plazaGreenPrefab,
-                                    ParkPathMemberKind.ParkSurface, ref nextId)
-                                >= expectedSurfaces
+                            ? TagComposedTemps(ref nextId) >= expectedSurfaces
                             : SetMaterializedMember(surface, _pendingBuildRecord,
                                 ParkPathMemberKind.ParkSurface, ref nextId);
                         if (attachedArea < 1 || attachedMarkers
@@ -323,7 +317,7 @@ namespace ParkManager.Tools
                     TagMaterializedPlazaAccess(_pendingBuildRecord,
                         out var areas, out var accesses, out var surfaces);
                     if (areas >= 1 && accesses >= _expectedAccessMarkers
-                        && surfaces >= _expectedParkSurfaceAreas + _expectedPlazaGreenAreas)
+                        && surfaces >= _expectedParkSurfaceAreas)
                     {
                         LogPlazaAccessConnections(_pendingBuildRecord);
                         FinalizeEditablePathBuild();
@@ -333,7 +327,7 @@ namespace ParkManager.Tools
                         <= MaterializationTimeoutFrames) return true;
                     AbortPathBuild(GameErrorOr(UiText.Of("path.plazaIncomplete",
                         areas, accesses, _expectedAccessMarkers, surfaces,
-                        _expectedParkSurfaceAreas + _expectedPlazaGreenAreas)));
+                        _expectedParkSurfaceAreas)));
                     return true;
                 case PathBuildPhase.ClearRequested:
                     applyMode = ApplyMode.Clear;
@@ -390,8 +384,9 @@ namespace ParkManager.Tools
                         && SetMaterializedMember(entity, park,
                             ParkPathMemberKind.ParkSurface, ref nextId))
                         surfaceCount++;
-                    else if (_plazaSurfacesComposed && prefab == _plazaGreenPrefab
-                        && IsMaterializedBuildEntity(entity, park, _plazaGreenBaseline)
+                    else if (_plazaSurfacesComposed
+                        && _composedBaselines.TryGetValue(prefab, out var baseline)
+                        && IsMaterializedBuildEntity(entity, park, baseline)
                         && SetMaterializedMember(entity, park,
                             ParkPathMemberKind.ParkSurface, ref nextId))
                         surfaceCount++;

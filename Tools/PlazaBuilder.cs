@@ -262,6 +262,7 @@ namespace ParkManager.Tools
             if (_plazaDesignStyle == next) return;
             _plazaDesignStyle = next;
             _ui?.SetPlazaDesignStyle(next);
+            PublishPlazaSquareSurface();
             ApplyPlazaSettings();
         }
 
@@ -296,6 +297,7 @@ namespace ParkManager.Tools
                 _plazaNoCenter ? "__none__"
                     : _assetCatalog.GetSelectedPlazaCenterName(polygon));
             PublishPlazaArrangement();
+            PublishPlazaSquareSurface();
         }
 
         internal void SelectPlazaCenter(string name)

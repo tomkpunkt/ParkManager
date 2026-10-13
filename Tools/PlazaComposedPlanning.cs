@@ -26,8 +26,15 @@ namespace ParkManager.Tools
         private ulong _composedDesignKey;
         /// <summary>Paving and green of the composed plaza; null for the classic arrangement.</summary>
         private PlazaSurfacePlan _composedSurfaces;
-        private Entity _plazaGreenPrefab = Entity.Null;
-        private int _expectedPlazaGreenAreas;
+        /// <summary>The surfaces to build, grouped by prefab (paving, squares, green).</summary>
+        private readonly List<(Entity prefab, List<List<float2>> polygons)> _composedGroups =
+            new List<(Entity, List<List<float2>>)>();
+        /// <summary>Pre-build areas of every extra surface prefab, to find the new ones.</summary>
+        private readonly Dictionary<Entity, HashSet<Entity>> _composedBaselines =
+            new Dictionary<Entity, HashSet<Entity>>();
+        /// <summary>Paving of the squares: "" picks a contrasting one, <see cref="SameSquareSurface"/> none.</summary>
+        private string _plazaSquareSurface = string.Empty;
+        internal const string SameSquareSurface = "__same__";
         /// <summary>Objects of the last composed plan left out on steep ground.</summary>
         private int _composedSlopeRemoved;
         /// <summary>Most height difference across a centerpiece's footprint.</summary>
@@ -35,7 +42,6 @@ namespace ParkManager.Tools
         /// <summary>Most height difference along a bench, lamp or planter.</summary>
         private const float FurnitureMaximumRise = 0.4f;
         private bool _plazaSurfacesComposed;
-        private readonly HashSet<Entity> _plazaGreenBaseline = new HashSet<Entity>();
 
         private PlazaPlan PlanComposedPlaza(bool useCenter, float centerRadius)
         {
@@ -124,39 +130,119 @@ namespace ParkManager.Tools
         }
 
         /// <summary>
-        /// Plans the plaza's ground for the build: the composed paving and
-        /// green when there is a grass surface that differs from the chosen
-        /// paving, otherwise the plot as one surface as before.
+        /// Plans the plaza's ground for the build: the surrounding paving in
+        /// the plaza surface, the squares in their own paving (when it
+        /// differs) and the green in grass (when it differs). Surfaces of
+        /// the same prefab are one group. Without a composed design the plot
+        /// stays one surface as before.
         /// </summary>
         private bool PrepareComposedSurfaces()
         {
-            _plazaGreenPrefab = Entity.Null;
-            _expectedPlazaGreenAreas = 0;
+            _composedGroups.Clear();
+            _composedBaselines.Clear();
             _plazaSurfacesComposed = false;
-            if (_composedSurfaces == null || _composedSurfaces.Green.Count == 0) return false;
-            if (!_assetCatalog.TryGetGreenSurface(out _plazaGreenPrefab, out var greenName)
-                || _plazaGreenPrefab == _parkSurfacePrefab)
+            if (_composedSurfaces == null || _composedDesign == null) return false;
+            var square = ResolveSquareSurface(out var squareName);
+            if (square == _parkSurfacePrefab) square = Entity.Null;
+            if (!_assetCatalog.TryGetGreenSurface(out var green, out var greenName)
+                || green == _parkSurfacePrefab) green = Entity.Null;
+            if (square == Entity.Null && green == Entity.Null) return false;
+            var plan = PlazaSurfaceComposer.Compose(_points, _composedDesign, square != Entity.Null);
+            void Add(Entity prefab, List<List<float2>> polygons)
             {
-                Mod.Log.Info("ParkManager plaza green is built as one surface: no separate "
-                    + "grass surface (or the plaza itself is grass).");
-                _plazaGreenPrefab = Entity.Null;
-                return false;
+                if (polygons.Count == 0) return;
+                for (var i = 0; i < _composedGroups.Count; i++)
+                    if (_composedGroups[i].prefab == prefab)
+                    {
+                        _composedGroups[i].polygons.AddRange(polygons);
+                        return;
+                    }
+                _composedGroups.Add((prefab, new List<List<float2>>(polygons)));
+                if (prefab != _parkSurfacePrefab) _composedBaselines[prefab] = new HashSet<Entity>();
             }
+            Add(_parkSurfacePrefab, plan.Paving);
+            Add(square != Entity.Null ? square : _parkSurfacePrefab, plan.Square);
+            // Without a separate grass the beds keep the plaza's own ground.
+            Add(green != Entity.Null ? green : _parkSurfacePrefab, plan.Green);
             _plazaSurfacesComposed = true;
-            Mod.Log.Info($"ParkManager plaza surfaces: {_composedSurfaces.Paving.Count} paving, "
-                + $"{_composedSurfaces.Green.Count} green ('{greenName}').");
+            Mod.Log.Info($"ParkManager plaza surfaces: {plan.Paving.Count} paving, "
+                + $"{plan.Square.Count} square ('{squareName}'), {plan.Green.Count} green "
+                + $"('{(green != Entity.Null ? greenName : "plaza surface")}').");
             return true;
         }
 
-        /// <summary>Creates the planned surfaces; returns how many paving pieces were made.</summary>
+        /// <summary>The squares' paving as chosen; empty for "same as the plaza".</summary>
+        private Entity ResolveSquareSurface(out string name)
+        {
+            name = string.Empty;
+            if (_plazaSquareSurface == SameSquareSurface) return Entity.Null;
+            if (!string.IsNullOrEmpty(_plazaSquareSurface)
+                && _assetCatalog.TryGetNamed(Assets.ParkAssetCategory.Surface,
+                    _plazaSquareSurface, out var chosen))
+            {
+                name = _plazaSquareSurface;
+                return chosen;
+            }
+            _assetCatalog.TryGetSelected(Assets.ParkAssetCategory.Surface, out _, out var plaza);
+            return _assetCatalog.TryGetContrastingPaving(plaza, out var prefab, out name)
+                ? prefab : Entity.Null;
+        }
+
+        /// <summary>The player's choice for the squares' paving, published to the UI.</summary>
+        internal void SetPlazaSquareSurface(string name)
+        {
+            if (!CanChangePlazaSettings()) return;
+            _plazaSquareSurface = name ?? string.Empty;
+            PublishPlazaSquareSurface();
+        }
+
+        private void PublishPlazaSquareSurface()
+        {
+            if (_plazaSquareSurface == SameSquareSurface)
+            {
+                _ui?.SetPlazaSquareSurface(SameSquareSurface);
+                return;
+            }
+            ResolveSquareSurface(out var name);
+            _ui?.SetPlazaSquareSurface(string.IsNullOrEmpty(name) ? SameSquareSurface : name);
+        }
+
+        private void CaptureComposedBaselines()
+        {
+            foreach (var pair in _composedBaselines)
+            {
+                pair.Value.Clear();
+                CapturePrefabBaseline(_permanentAreaQuery, pair.Key, pair.Value);
+            }
+        }
+
+        private int CountComposedTemps()
+        {
+            var count = 0;
+            foreach (var group in _composedGroups)
+                count += CountOwnTempEntities(_tempAreaQuery, group.prefab);
+            return count;
+        }
+
+        private int TagComposedTemps(ref int nextId)
+        {
+            var count = 0;
+            foreach (var group in _composedGroups)
+                count += TagPlazaTempEntities(_tempAreaQuery, group.prefab,
+                    ParkPathMemberKind.ParkSurface, ref nextId);
+            return count;
+        }
+
+        /// <summary>Creates every planned surface; false when one cannot be made.</summary>
         private bool CreateComposedSurfaces(ref Game.Simulation.TerrainHeightData terrain)
         {
-            foreach (var piece in _composedSurfaces.Paving)
-                if (!CreatePolygonArea(_parkSurfacePrefab, ref terrain, piece)) return false;
-            foreach (var green in _composedSurfaces.Green)
-                if (!CreatePolygonArea(_plazaGreenPrefab, ref terrain, green)) return false;
-            _expectedParkSurfaceAreas = _composedSurfaces.Paving.Count;
-            _expectedPlazaGreenAreas = _composedSurfaces.Green.Count;
+            _expectedParkSurfaceAreas = 0;
+            foreach (var group in _composedGroups)
+                foreach (var polygon in group.polygons)
+                {
+                    if (!CreatePolygonArea(group.prefab, ref terrain, polygon)) return false;
+                    _expectedParkSurfaceAreas++;
+                }
             return true;
         }
 

@@ -17,7 +17,7 @@ internal static class PlazaSurfaceTests
         var errors = new List<string>();
         if (!design.Succeeded) return errors;
         var plot = testCase.Polygon;
-        var surfaces = plan.Paving.Concat(plan.Green).ToList();
+        var surfaces = plan.Paving.Concat(plan.Square).Concat(plan.Green).ToList();
         foreach (var surface in surfaces)
         {
             if (!PlazaSurfaceComposer.StrictlySimple(surface)) errors.Add("surface touches itself");
@@ -58,8 +58,11 @@ internal static class PlazaSurfaceTests
         if (gaps > samples * 0.005) errors.Add($"{gaps} of {samples} sample points without a surface");
         if (overlaps > 0) errors.Add($"{overlaps} sample points under two surfaces");
         if (innerGaps > 0) errors.Add($"{innerGaps} bare sample points inside the plaza");
-        if (plan.Paving.Count > plan.Green.Count * 2 + 2)
-            errors.Add($"paving split into {plan.Paving.Count} pieces for {plan.Green.Count} green areas");
+        // Every hole (bed or square) needs at most two pieces of the paving around it.
+        var holes = plan.Green.Count + design.Rooms.Count(r => r.Role != PlazaRoomRole.Passage);
+        if (plan.Paving.Count + plan.Square.Count > holes * 2 + 2)
+            errors.Add($"paving split into {plan.Paving.Count}+{plan.Square.Count} pieces for {holes} holes");
+
         return errors;
     }
 
@@ -71,6 +74,7 @@ internal static class PlazaSurfaceTests
     internal static object Describe(PlazaSurfacePlan plan) => new
     {
         paving = plan.Paving.Select(Points).ToArray(),
+        square = plan.Square.Select(Points).ToArray(),
         green = plan.Green.Select(Points).ToArray(),
     };
 

@@ -357,10 +357,18 @@ test('the experimental plaza design replaces the arrangement settings', async ({
   // The classic arrangement stays the default.
   await expect(choices.first()).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('plaza-center-placement').locator('button').first()).toBeEnabled();
+  await expect(page.getByTestId('plaza-square-surface-choices')).toHaveCount(0);
   await choices.nth(3).click();
   await expect(choices.nth(3)).toHaveAttribute('aria-pressed', 'true');
+  // A composed design offers its own paving for the squares.
+  const squares = page.getByTestId('plaza-square-surface-choices');
+  await expect(squares).toHaveCount(1);
+  await squares.locator('button').nth(1).click();
+  await expect(squares.locator('button').first()).toHaveAttribute('aria-pressed', 'false');
+  const panel = await rect(page, 'park-panel');
+  expect(panel.height).toBeLessThanOrEqual(260);
   await expect(choices.first()).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByTestId('plaza-center-placement').locator('button').first()).toBeDisabled();
+  await expect(page.getByTestId('plaza-center-placement')).toHaveCount(0);
   await choices.nth(1).click();
   await expect(choices.nth(1)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('plaza-center-placement').locator('button').first()).toBeEnabled();
@@ -497,7 +505,7 @@ test('the plaza design and its furnishing overlay the drawn outline', async ({ p
 
 test('the design gallery renders every case without rule violations', async ({ page }) => {
   await page.goto('/designs.html');
-  await expect(page.locator('.card')).toHaveCount(120, { timeout: 30_000 });
+  await expect(page.locator('.card')).toHaveCount(126, { timeout: 30_000 });
   await expect(page.locator('.card.fail')).toHaveCount(0);
   await expect(page.locator('.err')).toHaveCount(0);
 });

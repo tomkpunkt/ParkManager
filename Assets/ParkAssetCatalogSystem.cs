@@ -189,6 +189,36 @@ namespace ParkManager.Assets
         }
 
         /// <summary>
+        /// A paving that sets the squares apart from the plaza's own surface:
+        /// stone, tiles or concrete rather than grass or sand, and never the
+        /// plaza surface itself.
+        /// </summary>
+        internal bool TryGetContrastingPaving(string plazaSurface, out Entity prefab,
+            out string name)
+        {
+            prefab = Entity.Null;
+            name = string.Empty;
+            if (!_choices.TryGetValue(ParkAssetCategory.Surface, out var choices)) return false;
+            ParkAssetChoice best = null;
+            var bestScore = int.MinValue;
+            foreach (var choice in choices)
+            {
+                if (string.Equals(choice.Name, plazaSurface, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var lower = choice.Name.ToLowerInvariant();
+                var score = 0;
+                foreach (var word in new[] { "tile", "stone", "cobble", "brick", "pav", "plaza", "concrete" })
+                    if (lower.Contains(word)) score += 40;
+                if (lower.Contains("grass") || lower.Contains("sand") || lower.Contains("gravel")
+                    || lower.Contains("dirt") || lower.Contains("soil")) score -= 100;
+                if (score <= 0 || score <= bestScore) continue;
+                bestScore = score;
+                best = choice;
+            }
+            return best != null && TryUse(best, out prefab, out name);
+        }
+
+        /// <summary>
         /// The ground for a plaza's designed green: the grass surface the
         /// park default would pick, independent of the plaza's own surface.
         /// </summary>

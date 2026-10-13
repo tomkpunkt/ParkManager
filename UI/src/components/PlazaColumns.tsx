@@ -4,7 +4,7 @@ import { generateDecorations, generatePaths, plazaArrangementJson$,
   selectAsset, selectPlazaCenter, setFurnitureDensity,
   setPlazaArrangementPlacement, setPlazaArrangementSpacing,
   setPlazaCenterPlacement, setPlazaCenterpieceSpacing, setPlazaDesignStyle,
-  setPlazaFenceEnabled } from "../bindings";
+  setPlazaFenceEnabled, setPlazaSquareSurface, SAME_SQUARE_SURFACE } from "../bindings";
 import { Texts } from "../i18n";
 import { AssetIcon, useIconFailures } from "./AssetIcon";
 import { AssetTileGroup } from "./AssetTileGroup";
@@ -103,6 +103,8 @@ type Props = {
   fenceEnabled: boolean;
   /** -1 for the classic arrangement, otherwise the composer style. */
   designStyle: number;
+  /** Paving of the composed squares, or SAME_SQUARE_SURFACE. */
+  squareSurface: string;
   density: number;
   pathPlanReady: boolean;
   decorationPlanReady: boolean;
@@ -118,7 +120,7 @@ type Props = {
 /** Plaza settings: centerpiece, arrangement, surface and fence. */
 export const PlazaColumns = ({ t, choices, centerOptions, centerSelected,
   centerPlacement, arrangementPlacement, centerpieceSpacing, arrangementSpacing,
-  fenceEnabled, designStyle, density, pathPlanReady, decorationPlanReady, structureLocked,
+  fenceEnabled, designStyle, squareSurface, density, pathPlanReady, decorationPlanReady, structureLocked,
   furnishingLocked, canPlan, notice, arrangementOpen, onEditArrangement }: Props) => {
   const icons = useIconFailures();
   const arrangement = parseArrangement(useValue(plazaArrangementJson$));
@@ -141,17 +143,27 @@ export const PlazaColumns = ({ t, choices, centerOptions, centerSelected,
         none={{ label: t.plazaNoCenter, active: noCenter,
           onSelect: () => selectPlazaCenter(NO_PLAZA_CENTER) }}
         disabled={structureLocked} />
-      <Segmented label={t.plazaCenterPlacementShort} value={centerPlacement}
-        disabled={structureLocked || composed} testId="plaza-center-placement"
-        onChange={setPlazaCenterPlacement} options={[
-          { value: 0, icon: <PlacementIcon kind="center" />, hint: t.plazaCenterSingle },
-          { value: 1, icon: <PlacementIcon kind="mirrored" />, hint: t.plazaCenterMirrored },
-          { value: 2, icon: <PlacementIcon kind="axis" />, hint: t.plazaCenterAxis },
-        ]} />
-      <SliderRow label={t.spacing} value={centerpieceSpacing} minimum={5}
-        maximum={60} unit=" m" testId="plaza-centerpiece-spacing"
-        disabled={structureLocked || noCenter || centerPlacement === 0 || composed}
-        onChange={setPlazaCenterpieceSpacing} />
+      {/* A composed design places the centerpiece itself; its rows give
+          way to the paving of the squares. */}
+      {composed ? <AssetTileGroup testId="plaza-square-surface-choices"
+        label={t.plazaSquareSurface} options={surface?.options ?? []}
+        isActive={(name) => squareSurface === name}
+        onSelect={setPlazaSquareSurface}
+        none={{ label: t.plazaSquareSame, active: squareSurface === SAME_SQUARE_SURFACE,
+          onSelect: () => setPlazaSquareSurface(SAME_SQUARE_SURFACE) }}
+        disabled={structureLocked} /> : <>
+        <Segmented label={t.plazaCenterPlacementShort} value={centerPlacement}
+          disabled={structureLocked} testId="plaza-center-placement"
+          onChange={setPlazaCenterPlacement} options={[
+            { value: 0, icon: <PlacementIcon kind="center" />, hint: t.plazaCenterSingle },
+            { value: 1, icon: <PlacementIcon kind="mirrored" />, hint: t.plazaCenterMirrored },
+            { value: 2, icon: <PlacementIcon kind="axis" />, hint: t.plazaCenterAxis },
+          ]} />
+        <SliderRow label={t.spacing} value={centerpieceSpacing} minimum={5}
+          maximum={60} unit=" m" testId="plaza-centerpiece-spacing"
+          disabled={structureLocked || noCenter || centerPlacement === 0}
+          onChange={setPlazaCenterpieceSpacing} />
+      </>}
     </Column>
     <Column title={t.colArrangement} tone="toneGreen" testId="column-arrangement"
       action={decorationPlanReady ? <HeadAction text={t.rearrange}

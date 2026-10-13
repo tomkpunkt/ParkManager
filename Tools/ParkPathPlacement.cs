@@ -775,8 +775,7 @@ namespace ParkManager.Tools
                 _plazaAccessBaseline);
             CapturePrefabBaseline(_permanentAreaQuery, _parkSurfacePrefab,
                 _parkSurfaceAreaBaseline);
-            CapturePrefabBaseline(_permanentAreaQuery, _plazaGreenPrefab,
-                _plazaGreenBaseline);
+            CaptureComposedBaselines();
         }
 
         private void ClearMaterializationBaselines()
@@ -784,7 +783,7 @@ namespace ParkManager.Tools
             _pathEntityBaseline.Clear();
             _areaEntityBaseline.Clear();
             _parkSurfaceAreaBaseline.Clear();
-            _plazaGreenBaseline.Clear();
+            foreach (var baseline in _composedBaselines.Values) baseline.Clear();
             _plazaAreaBaseline.Clear();
             _plazaAccessBaseline.Clear();
         }

@@ -46,6 +46,7 @@ namespace ParkManager.Tools
         private ValueBinding<int> _plazaArrangementSpacing;
         private ValueBinding<bool> _plazaFenceEnabled;
         private ValueBinding<int> _plazaDesignStyle;
+        private ValueBinding<string> _plazaSquareSurface;
         private ValueBinding<string> _plazaCenterOptionsJson;
         private ValueBinding<string> _plazaCenterSelected;
         private ValueBinding<string> _plazaArrangementJson;
@@ -119,6 +120,8 @@ namespace ParkManager.Tools
                 Group, "PlazaFenceEnabled", false));
             AddBinding(_plazaDesignStyle = new ValueBinding<int>(
                 Group, "PlazaDesignStyle", -1));
+            AddBinding(_plazaSquareSurface = new ValueBinding<string>(
+                Group, "PlazaSquareSurface", string.Empty));
             AddBinding(_plazaCenterOptionsJson = new ValueBinding<string>(
                 Group, "PlazaCenterOptionsJson", "[]"));
             AddBinding(_plazaCenterSelected = new ValueBinding<string>(
@@ -182,6 +185,8 @@ namespace ParkManager.Tools
                 value => Tool.SetPlazaFenceEnabled(value)));
             AddBinding(new TriggerBinding<int>(Group, "SetPlazaDesignStyle",
                 value => Tool.SetPlazaDesignStyle(value)));
+            AddBinding(new TriggerBinding<string>(Group, "SetPlazaSquareSurface",
+                value => Tool.SetPlazaSquareSurface(value)));
             AddBinding(new TriggerBinding<string>(Group, "SelectPlazaCenter",
                 value => Tool.SelectPlazaCenter(value)));
             AddBinding(new TriggerBinding<string>(Group, "EditPlazaArrangement",
@@ -278,6 +283,9 @@ namespace ParkManager.Tools
         }
 
         internal void SetPlazaDesignStyle(int style) => _plazaDesignStyle?.Update(style);
+
+        internal void SetPlazaSquareSurface(string name)
+            => _plazaSquareSurface?.Update(name ?? string.Empty);
 
         internal void SetPlazaArrangement(string json)
             => _plazaArrangementJson?.Update(json ?? "[]");

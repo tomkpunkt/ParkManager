@@ -347,6 +347,9 @@ namespace ParkManager.Geometry
                 main.MinimumWidth = math.min(main.MinimumWidth, context.Usable * 0.4f);
                 main.Centres.Add(origin + axis * (side * length * 0.18f));
                 main.Centres.Add(origin + axis * (side * length * 0.12f));
+                // Concave plots may cut the fixed points off: also try the
+                // point with the most room in this half.
+                AddWidestIn(context, main.Centres, p => math.dot(p - origin, axis) * side >= length * 0.05f);
                 main.Constraint = p => math.dot(p - origin, axis) * side >= -length * 0.08f;
                 if (!FitRoom(context, main, out var mainShape)) continue;
                 var mainRoom = AddRoom(context, mainShape, PlazaRoomRole.MainSquare, 1f);
@@ -355,6 +358,7 @@ namespace ParkManager.Geometry
                 var second = SecondaryRequest(context,
                     origin - axis * (side * length * 0.3f), mainArea * 0.4f, false);
                 second.Centres.Add(origin - axis * (side * length * 0.25f));
+                AddWidestIn(context, second.Centres, p => math.dot(p - origin, axis) * side <= -length * 0.12f);
                 if (chamber) second.AvoidGap = 0.6f;
                 second.Constraint = p => math.dot(p - origin, axis) * side <= -length * 0.05f;
                 if (!FitRoom(context, second, out var secondShape)) continue;
@@ -364,6 +368,20 @@ namespace ParkManager.Geometry
             }
             context.Design.Rooms.Clear();
             return false;
+        }
+
+        /// <summary>Adds the cell centre farthest from the boundary among those the filter accepts.</summary>
+        private static void AddWidestIn(Context context, List<float2> centres, System.Func<float2, bool> accept)
+        {
+            var geometry = context.Geometry;
+            var best = -1;
+            for (var index = 0; index < geometry.Inside.Length; index++)
+            {
+                if (!geometry.Inside[index] || best >= 0 && geometry.Distance[index] <= geometry.Distance[best])
+                    continue;
+                if (accept(geometry.CellCenter(index))) best = index;
+            }
+            if (best >= 0) centres.Add(geometry.CellCenter(best));
         }
 
         /// <summary>Sum of the entrances' offsets along the axis: where people arrive.</summary>

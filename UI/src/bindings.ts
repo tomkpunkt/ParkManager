@@ -26,6 +26,9 @@ export const plazaArrangementSpacing$ = bindValue<number>(MOD, "PlazaArrangement
 export const plazaFenceEnabled$ = bindValue<boolean>(MOD, "PlazaFenceEnabled", false);
 /** Experimental plaza composer: -1 = classic arrangement, otherwise a PlazaStyle. */
 export const plazaDesignStyle$ = bindValue<number>(MOD, "PlazaDesignStyle", -1);
+/** Paving of the composed squares; "__same__" when they share the plaza surface. */
+export const plazaSquareSurface$ = bindValue<string>(MOD, "PlazaSquareSurface", "");
+export const SAME_SQUARE_SURFACE = "__same__";
 export const plazaCenterOptionsJson$ = bindValue<string>(MOD, "PlazaCenterOptionsJson", "[]");
 export const plazaCenterSelected$ = bindValue<string>(MOD, "PlazaCenterSelected", "");
 export const plazaArrangementJson$ = bindValue<string>(MOD, "PlazaArrangementJson", "[]");
@@ -60,6 +63,8 @@ export const setPlazaFenceEnabled = (value: boolean) =>
   trigger(MOD, "SetPlazaFenceEnabled", value);
 export const setPlazaDesignStyle = (value: number) =>
   trigger(MOD, "SetPlazaDesignStyle", value);
+export const setPlazaSquareSurface = (name: string) =>
+  trigger(MOD, "SetPlazaSquareSurface", name);
 export const selectPlazaCenter = (name: string) =>
   trigger(MOD, "SelectPlazaCenter", name);
 export const editPlazaArrangement = (command: string) =>

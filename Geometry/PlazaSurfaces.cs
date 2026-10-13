@@ -99,9 +99,346 @@ namespace ParkManager.Geometry
         private static List<List<float2>> LeastSeams(List<float2> outer,
             List<List<float2>> holes, float2 axis)
         {
-            var along = Difference(outer, holes, axis);
-            var across = Difference(outer, holes, new float2(-axis.y, axis.x));
-            return SeamLength(across) < SeamLength(along) - 0.5f ? across : along;
+            // Two ways to split, each along or across the axis: slab cuts at
+            // every hole, or grid regions whose borders run through the holes.
+            // The split with the fewest sharp corners wins, then the one with
+            // the least seam.
+            var normal = new float2(-axis.y, axis.x);
+            List<List<float2>> best = null;
+            var bestAcute = int.MaxValue;
+            var bestSeam = float.MaxValue;
+            var bestIndex = -1;
+            var candidates = new[]
+            {
+                Difference(outer, holes, axis), Difference(outer, holes, normal),
+                GridDifference(outer, holes, axis), GridDifference(outer, holes, normal),
+            };
+            for (var index = 0; index < candidates.Length; index++)
+            {
+                var candidate = candidates[index];
+                if (candidate.Count == 0 || !Valid(candidate)) continue;
+                var acute = AcuteCorners(candidate, outer);
+                var seam = SeamLength(candidate);
+                if (acute > bestAcute || acute == bestAcute && seam >= bestSeam - 0.5f) continue;
+                best = candidate;
+                bestAcute = acute;
+                bestSeam = seam;
+                bestIndex = index;
+            }
+            LastSplit = bestIndex;
+            var slabBest = int.MaxValue;
+            for (var i = 0; i < 2; i++) if (Valid(candidates[i])) slabBest = math.min(slabBest, AcuteCorners(candidates[i], outer));
+            SlabAcute += slabBest == int.MaxValue ? 0 : slabBest;
+            ChosenAcute += bestAcute == int.MaxValue ? 0 : bestAcute;
+            // Nothing valid: the slab split along the axis, as before.
+            return best ?? candidates[0];
+        }
+
+        /// <summary>Which split won last (0, 1 slabs along/across; 2, 3 grid); for statistics.</summary>
+        internal static int LastSplit;
+        internal static int SlabAcute, ChosenAcute;
+
+        private static bool Valid(List<List<float2>> pieces)
+        {
+            foreach (var piece in pieces)
+            {
+                if (!StrictlySimple(piece)) return false;
+                for (var i = 0; i < piece.Count; i++)
+                    if (math.distance(piece[i], piece[(i + 1) % piece.Count]) < MinimumEdge * 0.99f)
+                        return false;
+            }
+            return true;
+        }
+
+        /// <summary>Corners the game draws badly; sharper than this they flicker or break.</summary>
+        internal const float SharpCorner = 15f;
+
+        /// <summary>Corners sharper than <see cref="SharpCorner"/> not given by the plot itself.</summary>
+        internal static int AcuteCorners(List<List<float2>> pieces, IReadOnlyList<float2> plot)
+        {
+            var count = 0;
+            foreach (var piece in pieces)
+                for (var i = 0; i < piece.Count; i++)
+                {
+                    if (CornerAngle(piece, i) >= SharpCorner) continue;
+                    var given = false;
+                    foreach (var corner in plot)
+                        given |= math.distancesq(corner, piece[i]) < 0.01f;
+                    if (!given) count++;
+                }
+            return count;
+        }
+
+        /// <summary>Interior angle in degrees at a corner of a counter-clockwise ring.</summary>
+        internal static float CornerAngle(List<float2> ring, int i)
+        {
+            var previous = ring[(i + ring.Count - 1) % ring.Count] - ring[i];
+            var next = ring[(i + 1) % ring.Count] - ring[i];
+            var angle = math.degrees(math.atan2(previous.y, previous.x) - math.atan2(next.y, next.x));
+            angle = (angle % 360f + 360f) % 360f;
+            return PolygonMath.SignedArea(ring) < 0.0 ? 360f - angle : angle;
+        }
+
+        /// <summary>
+        /// A ring that touches itself at a corner (a hole meets a region
+        /// border in a single point) is two rings joined there: split it.
+        /// </summary>
+        private static List<List<float2>> SplitPinches(List<float2> ring)
+        {
+            for (var i = 0; i < ring.Count; i++)
+            for (var j = i + 2; j < ring.Count; j++)
+            {
+                if (i == 0 && j == ring.Count - 1) continue;
+                if (math.distancesq(ring[i], ring[j]) > Epsilon * Epsilon) continue;
+                var first = new List<float2>();
+                for (var k = i; k < j; k++) first.Add(ring[k]);
+                var second = new List<float2>();
+                for (var k = j; k != i; k = (k + 1) % ring.Count) second.Add(ring[k]);
+                var result = new List<List<float2>>();
+                foreach (var part in new[] { first, second })
+                {
+                    var cleaned = Clean(part);
+                    if (cleaned.Count >= 3 && PolygonMath.SignedArea(cleaned) > 0.0)
+                        result.AddRange(SplitPinches(cleaned));
+                }
+                return result;
+            }
+            return new List<List<float2>> { ring };
+        }
+
+        /// <summary>Grid spacing the region borders snap to.</summary>
+        private const float GridSize = 2f;
+
+        /// <summary>
+        /// The plot minus the holes, split along grid lines into a few large
+        /// regions so that no region encloses a hole: every hole is crossed by
+        /// a region border through its middle third. Where a border meets a
+        /// hole it cuts the contour steeply, never along it, so no sliver
+        /// corner arises. Each region minus its holes is one simple piece.
+        /// </summary>
+        internal static List<List<float2>> GridDifference(IReadOnlyList<float2> outer,
+            IReadOnlyList<List<float2>> holes, float2 axis)
+        {
+            var normal = new float2(-axis.y, axis.x);
+            float2 ToLocal(float2 p) => new float2(math.dot(p, axis), math.dot(p, normal));
+            float2 ToWorld(float2 p) => axis * p.x + normal * p.y;
+            List<float2> Local(IReadOnlyList<float2> ring)
+            {
+                var result = new List<float2>(ring.Count);
+                foreach (var p in ring) result.Add(ToLocal(p));
+                return result;
+            }
+            var rings = new List<List<float2>> { Local(outer) };
+            foreach (var hole in holes) rings.Add(Local(hole));
+            PolygonMath.Bounds(rings[0], out var min, out var max);
+            var boxes = new List<float4>();
+            for (var i = 1; i < rings.Count; i++)
+            {
+                PolygonMath.Bounds(rings[i], out var low, out var high);
+                boxes.Add(new float4(low, high));
+            }
+            var regions = new List<float4>();
+            SplitRegion(new float4(min - 1f, max + 1f), boxes, rings, min, regions, 0);
+
+            var pieces = new List<List<float2>>();
+            foreach (var region in regions)
+            {
+                var clip = new List<float2> { region.xy, new float2(region.z, region.y),
+                    region.zw, new float2(region.x, region.w) };
+                var clipped = new List<List<float2>>(rings) { clip };
+                // A region encloses no hole: its outline is one piece, without
+                // helper cuts; if it is not simple after all, the chained
+                // trapezoids stand in.
+                var chained = Trapezoids(clipped, clipped.Count - 1);
+                var outline = Outline(clipped, clipped.Count - 1);
+                var simple = outline.Count > 0;
+                foreach (var ring in outline) simple &= StrictlySimple(ring);
+                // The outline must cover exactly what the trapezoids cover:
+                // a region that still encloses a hole, or a ring chained
+                // wrongly at a touching point, fails this.
+                var expected = 0f;
+                foreach (var piece in chained) expected += PlazaShape.Area(piece);
+                var covered = 0f;
+                foreach (var ring in outline) covered += PlazaShape.Area(ring);
+                simple &= math.abs(covered - expected) <= 0.002f * expected + 0.05f;
+                pieces.AddRange(simple ? outline : MergeAlongCuts(chained));
+            }
+            pieces = MergeAlongCuts(pieces);
+            var split = new List<List<float2>>();
+            foreach (var piece in pieces) split.AddRange(SplitPinches(piece));
+            var output = new List<List<float2>>();
+            foreach (var piece in split)
+            {
+                var world = new List<float2>(piece.Count);
+                foreach (var p in piece) world.Add(ToWorld(p));
+                world = DropShortEdges(Clean(world));
+                if (world.Count < 3 || PlazaShape.Area(world) < MinimumPavingArea
+                    || PlazaShape.MinimumWidth(world) < MinimumPavingWidth) continue;
+                output.Add(world);
+            }
+            return output;
+        }
+
+        /// <summary>
+        /// Splits a region along a grid line until it encloses no hole. The
+        /// line crosses an enclosed hole in its middle third, crosses every
+        /// other hole it meets the same way, and keeps a metre from holes it
+        /// passes, so neither grazing cuts nor slivers appear.
+        /// </summary>
+        private static void SplitRegion(float4 region, List<float4> boxes,
+            List<List<float2>> rings, float2 origin, List<float4> regions, int depth)
+        {
+            var enclosed = new List<float4>();
+            foreach (var box in boxes)
+                if (box.x > region.x + Epsilon && box.y > region.y + Epsilon
+                    && box.z < region.z - Epsilon && box.w < region.w - Epsilon) enclosed.Add(box);
+            if (enclosed.Count == 0 || depth > 12)
+            {
+                regions.Add(region);
+                return;
+            }
+            var bestLine = float.NaN;
+            var bestVertical = true;
+            var bestScore = float.MinValue;
+            foreach (var hole in enclosed)
+            foreach (var vertical in new[] { true, false })
+            {
+                var low = vertical ? hole.x : hole.y;
+                var high = vertical ? hole.z : hole.w;
+                var start = vertical ? origin.x : origin.y;
+                var middle = (low + high) * 0.5f;
+                // The grid line nearest the middle, the middle itself, and
+                // half-metre steps across the hole's middle three fifths.
+                var snapped = start + math.round((middle - start) / GridSize) * GridSize;
+                var lines = new List<float> { snapped, middle };
+                for (var t = low + (high - low) * 0.2f; t <= high - (high - low) * 0.2f; t += 0.5f)
+                    lines.Add(t);
+                foreach (var line in lines)
+                {
+                    // Either test may admit a line: the contour test where bounding
+                    // boxes are too coarse, the box test where the plot edge is flat.
+                    var score = math.max(LineScore(region, boxes, enclosed, rings, line, vertical),
+                        BoxScore(region, boxes, enclosed, line, vertical));
+                    if (score <= bestScore) continue;
+                    bestScore = score;
+                    bestLine = line;
+                    bestVertical = vertical;
+                }
+            }
+            if (float.IsNaN(bestLine))
+            {
+                regions.Add(region);
+                return;
+            }
+            var first = region;
+            var second = region;
+            if (bestVertical)
+            {
+                first.z = bestLine;
+                second.x = bestLine;
+            }
+            else
+            {
+                first.w = bestLine;
+                second.y = bestLine;
+            }
+            SplitRegion(first, boxes, rings, origin, regions, depth + 1);
+            SplitRegion(second, boxes, rings, origin, regions, depth + 1);
+        }
+
+        private static float BoxScore(float4 region, List<float4> boxes, List<float4> enclosed,
+            float line, bool vertical)
+        {
+            var from = vertical ? region.x : region.y;
+            var to = vertical ? region.z : region.w;
+            if (line < from + GridSize || line > to - GridSize) return float.MinValue;
+            var score = 0f;
+            foreach (var box in boxes)
+            {
+                var low = vertical ? box.x : box.y;
+                var high = vertical ? box.z : box.w;
+                // Only holes the line meets inside this region matter.
+                var across0 = vertical ? box.y : box.x;
+                var across1 = vertical ? box.w : box.z;
+                var regionLow = vertical ? region.y : region.x;
+                var regionHigh = vertical ? region.w : region.z;
+                if (across1 < regionLow || across0 > regionHigh) continue;
+                var width = high - low;
+                if (line > low && line < high)
+                {
+                    // Crossing near the edge of a hole cuts its contour flat.
+                    var offset = math.abs(line - (low + high) * 0.5f) / math.max(Epsilon, width);
+                    if (offset > 1f / 6f) return float.MinValue;
+                    if (enclosed.Contains(box)) score += 10f;
+                    score -= offset;
+                }
+                else if (math.min(math.abs(line - low), math.abs(line - high)) < 1f)
+                    return float.MinValue;
+            }
+            // Balanced regions.
+            return score - math.abs(line - (from + to) * 0.5f) / math.max(1f, to - from);
+        }
+
+        /// <summary>Least angle at which a region border may cut a hole's contour.</summary>
+        private const float MinimumCrossing = 35f;
+        /// <summary>Least angle at which a region border may meet the plot edge.</summary>
+        private const float MinimumPlotCrossing = 25f;
+
+        /// <summary>
+        /// How good a grid line is as region border: it must cut every hole
+        /// it meets inside the region steeply (at the real contour, not the
+        /// bounding box), keep a metre from holes it passes, and meet the
+        /// plot edge at a fair angle. Splitting enclosed holes scores most,
+        /// then steep crossings and balanced halves.
+        /// </summary>
+        private static float LineScore(float4 region, List<float4> boxes, List<float4> enclosed,
+            List<List<float2>> rings, float line, bool vertical)
+        {
+            var from = vertical ? region.x : region.y;
+            var to = vertical ? region.z : region.w;
+            if (line < from + GridSize || line > to - GridSize) return float.MinValue;
+            var along0 = vertical ? region.y : region.x;
+            var along1 = vertical ? region.w : region.z;
+            var direction = vertical ? new float2(0f, 1f) : new float2(1f, 0f);
+            var score = 0f;
+            for (var r = 0; r < rings.Count; r++)
+            {
+                var ring = rings[r];
+                var crossed = false;
+                var flattest = 90f;
+                var nearest = float.MaxValue;
+                for (var i = 0; i < ring.Count; i++)
+                {
+                    var a = ring[i];
+                    var b = ring[(i + 1) % ring.Count];
+                    var ca = vertical ? a.x : a.y;
+                    var cb = vertical ? b.x : b.y;
+                    var pa = vertical ? a.y : a.x;
+                    if (pa >= along0 && pa <= along1) nearest = math.min(nearest, math.abs(ca - line));
+                    if ((ca - line) * (cb - line) > 0f || ca == cb) continue;
+                    var t = (line - ca) / (cb - ca);
+                    var at = math.lerp(vertical ? a.y : a.x, vertical ? b.y : b.x, t);
+                    if (at < along0 || at > along1) continue;
+                    crossed = true;
+                    var edge = math.normalizesafe(b - a);
+                    var angle = math.degrees(math.acos(math.saturate(math.abs(math.dot(edge, direction)))));
+                    flattest = math.min(flattest, angle);
+                }
+                if (r == 0)
+                {
+                    if (crossed && flattest < MinimumPlotCrossing) return float.MinValue;
+                    continue;
+                }
+                if (crossed)
+                {
+                    if (flattest < MinimumCrossing) return float.MinValue;
+                    if (enclosed.Contains(boxes[r - 1])) score += 10f;
+                    score -= (90f - flattest) / 90f;
+                }
+                else if (nearest < 1f) return float.MinValue;
+            }
+            // Balanced regions.
+            return score - math.abs(line - (from + to) * 0.5f) / math.max(1f, to - from);
         }
 
         /// <summary>True when the bounding boxes meet and a corner of one lies in the other.</summary>
@@ -169,6 +506,8 @@ namespace ParkManager.Geometry
 
         /// <summary>Distance below which green reaches the plot edge instead of leaving a strip.</summary>
         private const float SnapDistance = 1.5f;
+        /// <summary>Furthest a flat run of green is pulled to the plot edge.</summary>
+        private const float LongSnap = 4f;
         /// <summary>Sharper corners are spikes of the traced garden outline.</summary>
         private const float MinimumCornerAngle = 25f;
 
@@ -183,10 +522,30 @@ namespace ParkManager.Geometry
             var onEdge = new int[green.Count];
             var position = new float[green.Count];
             var snapped = new List<float2>(green);
+            var reach = new float[green.Count];
+            for (var i = 0; i < green.Count; i++) reach[i] = SnapDistance;
+            // Where the green leaves the edge at a flat angle, the paving
+            // between them ends in a sliver point: let the snap reach further
+            // there, until the green turns away steeply.
+            for (var pass = 0; pass < 3; pass++)
+            for (var i = 0; i < green.Count; i++)
+            {
+                var next = (i + 1) % green.Count;
+                var previous = (i + green.Count - 1) % green.Count;
+                foreach (var neighbour in new[] { next, previous })
+                {
+                    var here = math.sqrt(PolygonMath.DistanceToBoundarySquared(green[i], plot));
+                    var there = math.sqrt(PolygonMath.DistanceToBoundarySquared(green[neighbour], plot));
+                    if (here >= reach[i] || there < reach[neighbour] || there > LongSnap) continue;
+                    var run = math.distance(green[i], green[neighbour]);
+                    // Rising less than tan(25°) per metre along the edge is flat.
+                    if (there - here < run * 0.47f) reach[neighbour] = LongSnap;
+                }
+            }
             for (var i = 0; i < green.Count; i++)
             {
                 onEdge[i] = -1;
-                var best = SnapDistance * SnapDistance;
+                var best = reach[i] * reach[i];
                 for (var e = 0; e < plot.Count; e++)
                 {
                     var a = plot[e];
@@ -281,19 +640,22 @@ namespace ParkManager.Geometry
             return true;
         }
 
-        /// <summary>Removes corners sharper than <see cref="MinimumCornerAngle"/>.</summary>
+        /// <summary>
+        /// Removes corners sharper than <see cref="MinimumCornerAngle"/>, and
+        /// fills notches as narrow: the paving would run into them as a
+        /// sliver point.
+        /// </summary>
         internal static List<float2> DropSpikes(List<float2> ring)
         {
             var result = new List<float2>(ring);
-            var limit = math.cos(math.radians(MinimumCornerAngle));
-            for (var guard = 0; guard < ring.Count && result.Count > 3; guard++)
+            if (PolygonMath.SignedArea(result) < 0.0) result.Reverse();
+            for (var guard = 0; guard < ring.Count * 2 && result.Count > 3; guard++)
             {
                 var removed = false;
                 for (var i = 0; i < result.Count && result.Count > 3; i++)
                 {
-                    var previous = result[(i + result.Count - 1) % result.Count] - result[i];
-                    var next = result[(i + 1) % result.Count] - result[i];
-                    if (math.dot(math.normalizesafe(previous), math.normalizesafe(next)) < limit)
+                    var angle = CornerAngle(result, i);
+                    if (angle >= MinimumCornerAngle && angle <= 360f - MinimumCornerAngle)
                         continue;
                     var candidate = new List<float2>(result);
                     candidate.RemoveAt(i);
@@ -354,16 +716,15 @@ namespace ParkManager.Geometry
         /// every vertex into trapezoids, then chains trapezoids whose sides
         /// match exactly into x-monotone pieces.
         /// </summary>
-        private static List<List<float2>> Trapezoids(List<List<float2>> rings)
-        {
-            var xs = new List<float>();
-            foreach (var ring in rings)
-                foreach (var p in ring) xs.Add(p.x);
-            xs.Sort();
-            var cuts = new List<float>();
-            foreach (var x in xs)
-                if (cuts.Count == 0 || x - cuts[cuts.Count - 1] > Epsilon) cuts.Add(x);
+        /// <param name="clip">Index of a ring the region must lie inside
+        /// (a clip box), or -1; all rings after the first are holes otherwise.</param>
+        private static List<List<float2>> Trapezoids(List<List<float2>> rings, int clip = -1)
+            => ChainSlabs(Slabs(rings, clip, Cuts(rings)));
 
+        /// <summary>The region split at every vertex into trapezoids, slab by slab.</summary>
+        private static List<List<Trapezoid>> Slabs(List<List<float2>> rings, int clip,
+            List<float> cuts)
+        {
             var slabs = new List<List<Trapezoid>>();
             var crossings = new List<(float middle, float left, float right)>();
             for (var k = 0; k + 1 < cuts.Count; k++)
@@ -379,7 +740,10 @@ namespace ParkManager.Geometry
                         var b = ring[(i + 1) % ring.Count];
                         if (math.min(a.x, b.x) > xm || math.max(a.x, b.x) < xm) continue;
                         if (math.abs(b.x - a.x) < Epsilon) continue;
-                        float At(float x) => a.y + (x - a.x) * (b.y - a.y) / (b.x - a.x);
+                        // Exactly at a corner, the corner itself: neighbouring
+                        // slabs then agree bit for bit on the shared side.
+                        float At(float x) => x == a.x ? a.y : x == b.x ? b.y
+                            : a.y + (x - a.x) * (b.y - a.y) / (b.x - a.x);
                         crossings.Add((At(xm), At(x0), At(x1)));
                     }
                 crossings.Sort((p, q) => p.middle.CompareTo(q.middle));
@@ -387,7 +751,7 @@ namespace ParkManager.Geometry
                 for (var i = 0; i + 1 < crossings.Count; i++)
                 {
                     var probe = new float2(xm, (crossings[i].middle + crossings[i + 1].middle) * 0.5f);
-                    if (!Inside(rings, probe)) continue;
+                    if (!Inside(rings, probe, clip)) continue;
                     slab.Add(new Trapezoid
                     {
                         Left = x0, Right = x1,
@@ -397,7 +761,103 @@ namespace ParkManager.Geometry
                 }
                 slabs.Add(slab);
             }
+            return slabs;
+        }
 
+        private static List<float> Cuts(List<List<float2>> rings)
+        {
+            var xs = new List<float>();
+            foreach (var ring in rings)
+                foreach (var p in ring) xs.Add(p.x);
+            xs.Sort();
+            var cuts = new List<float>();
+            foreach (var x in xs)
+                if (cuts.Count == 0 || x - cuts[cuts.Count - 1] > Epsilon) cuts.Add(x);
+            return cuts;
+        }
+
+        /// <summary>
+        /// The outline of a region that encloses no hole: all its trapezoids
+        /// united by striking the vertical sides they share (each inner side
+        /// appears once in each direction), then chaining what is left. No
+        /// helper cut survives, so no corner of one appears.
+        /// </summary>
+        private static List<List<float2>> Outline(List<List<float2>> rings, int clip)
+        {
+            var slabs = Slabs(rings, clip, Cuts(rings));
+            var edges = new List<(float2 from, float2 to)>();
+            // Vertical sides per cut line: +1 up (right side), -1 down (left side).
+            var sides = new Dictionary<float, List<(float low, float high, int sign)>>();
+            void Side(float x, float low, float high, int sign)
+            {
+                if (high - low <= 0f) return;
+                if (!sides.TryGetValue(x, out var list)) sides[x] = list = new List<(float, float, int)>();
+                list.Add((low, high, sign));
+            }
+            foreach (var slab in slabs)
+            foreach (var t in slab)
+            {
+                var bl = new float2(t.Left, t.BottomLeft);
+                var br = new float2(t.Right, t.BottomRight);
+                var tr = new float2(t.Right, t.TopRight);
+                var tl = new float2(t.Left, t.TopLeft);
+                if (math.distancesq(bl, br) > 0f) edges.Add((bl, br));
+                if (math.distancesq(tr, tl) > 0f) edges.Add((tr, tl));
+                Side(t.Right, t.BottomRight, t.TopRight, 1);
+                Side(t.Left, t.BottomLeft, t.TopLeft, -1);
+            }
+            foreach (var pair in sides)
+            {
+                var ys = new List<float>();
+                foreach (var (low, high, _) in pair.Value)
+                {
+                    ys.Add(low);
+                    ys.Add(high);
+                }
+                ys.Sort();
+                for (var i = 0; i + 1 < ys.Count; i++)
+                {
+                    var low = ys[i];
+                    var high = ys[i + 1];
+                    if (high - low <= 0f) continue;
+                    var middle = (low + high) * 0.5f;
+                    var net = 0;
+                    foreach (var (from, to, sign) in pair.Value)
+                        if (middle > from && middle < to) net += sign;
+                    if (net > 0) edges.Add((new float2(pair.Key, low), new float2(pair.Key, high)));
+                    else if (net < 0) edges.Add((new float2(pair.Key, high), new float2(pair.Key, low)));
+                }
+            }
+            // Chain the boundary edges into rings.
+            var next = new Dictionary<float2, List<float2>>();
+            foreach (var (from, to) in edges)
+            {
+                if (!next.TryGetValue(from, out var list)) next[from] = list = new List<float2>();
+                list.Add(to);
+            }
+            var rings2 = new List<List<float2>>();
+            foreach (var start in new List<float2>(next.Keys))
+                while (next.TryGetValue(start, out var outgoing) && outgoing.Count > 0)
+                {
+                    var ring = new List<float2> { start };
+                    var current = start;
+                    for (var guard = 0; guard < edges.Count + 1; guard++)
+                    {
+                        if (!next.TryGetValue(current, out var options) || options.Count == 0) break;
+                        var to = options[options.Count - 1];
+                        options.RemoveAt(options.Count - 1);
+                        if (to.Equals(start)) break;
+                        ring.Add(to);
+                        current = to;
+                    }
+                    var cleaned = Clean(ring);
+                    if (cleaned.Count >= 3 && PolygonMath.SignedArea(cleaned) > 0.0) rings2.Add(cleaned);
+                }
+            return rings2;
+        }
+
+        private static List<List<float2>> ChainSlabs(List<List<Trapezoid>> slabs)
+        {
             // Chain trapezoids through sides that match end to end.
             var pieces = new List<List<float2>>();
             var used = new List<bool[]>();
@@ -448,11 +908,11 @@ namespace ParkManager.Geometry
             return pieces;
         }
 
-        private static bool Inside(List<List<float2>> rings, float2 point)
+        private static bool Inside(List<List<float2>> rings, float2 point, int clip = -1)
         {
             if (!PolygonMath.PointInside(point, rings[0])) return false;
             for (var i = 1; i < rings.Count; i++)
-                if (PolygonMath.PointInside(point, rings[i])) return false;
+                if (PolygonMath.PointInside(point, rings[i]) != (i == clip)) return false;
             return true;
         }
 

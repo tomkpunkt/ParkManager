@@ -79,6 +79,8 @@ internal static class PlazaDesignTests
         var furnishTimes = new List<double>();
         var surfaceTimes = new List<double>();
         var pavingPieces = new List<int>();
+        var splitWins = new int[5];
+        PlazaSurfaceComposer.SlabAcute = PlazaSurfaceComposer.ChosenAcute = 0;
         foreach (var testCase in Cases())
         foreach (var style in styles)
         {
@@ -99,6 +101,7 @@ internal static class PlazaDesignTests
             furnishTimes.Add(furnishing.Milliseconds);
             var surfaceTimer = System.Diagnostics.Stopwatch.StartNew();
             var surfaces = PlazaSurfaceComposer.Compose(testCase.Polygon, design);
+            splitWins[PlazaSurfaceComposer.LastSplit + 1]++;
             surfaceTimes.Add(surfaceTimer.Elapsed.TotalMilliseconds);
             if (design.Succeeded) pavingPieces.Add(surfaces.Paving.Count);
             errors.AddRange(PlazaSurfaceTests.Check(testCase, design, surfaces));
@@ -115,14 +118,24 @@ internal static class PlazaDesignTests
             });
         }
         PlazaFurnishingTests.Stress(failures);
+        // Sharp paving corners are drawn badly by the game. Not every one can
+        // be avoided yet; their number may only go down (ratchet).
+        if (PlazaSurfaceComposer.ChosenAcute > MaximumSharpCorners)
+            failures.Add($"Plaza surfaces: {PlazaSurfaceComposer.ChosenAcute} paving corners sharper "
+                + $"than {PlazaSurfaceComposer.SharpCorner}° (at most {MaximumSharpCorners})");
         Console.WriteLine($"Plaza designs: {results.Count} composed, "
             + $"avg {times.Average():F1} ms, max {times.Max():F1} ms; furnished "
             + $"avg {furnishTimes.Average():F1} ms, max {furnishTimes.Max():F1} ms; surfaces "
             + $"avg {surfaceTimes.Average():F1} ms, max {surfaceTimes.Max():F1} ms, paving pieces "
-            + $"avg {pavingPieces.Average():F1}, max {pavingPieces.Max()}.");
+            + $"avg {pavingPieces.Average():F1}, max {pavingPieces.Max()}; surroundings split "
+            + $"by slabs {splitWins[1] + splitWins[2]}, grid {splitWins[3] + splitWins[4]}, "
+            + $"none valid {splitWins[0]}; sharp corners slabs only {PlazaSurfaceComposer.SlabAcute}, chosen {PlazaSurfaceComposer.ChosenAcute}.");
         return new { count = results.Count, cases = results,
             averageMs = times.Average(), maximumMs = times.Max() };
     }
+
+    /// <summary>Sharp paving corners over all cases; lower it when the split improves.</summary>
+    private const int MaximumSharpCorners = 40;
 
     private static readonly Dictionary<PlazaGrammar, float> GreenMaximum = new()
     {

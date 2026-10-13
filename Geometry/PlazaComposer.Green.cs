@@ -5,6 +5,9 @@ namespace ParkManager.Geometry
 {
     internal static partial class PlazaComposer
     {
+        /// <summary>Smallest bed worth keeping besides the leading motif.</summary>
+        private const float MinimumBedArea = 40f;
+
         /// <summary>Largest size of a modern companion bed relative to the leading motif.</summary>
         internal const float ModernCompanionShare = 0.6f;
 
@@ -164,9 +167,16 @@ namespace ParkManager.Geometry
                 lead = zone;
             }
             lead.Primary = true;
-            if (design.Grammar != PlazaGrammar.Modern) return;
-
             var leadArea = PlazaShape.Area(lead.Polygon);
+            if (design.Grammar != PlazaGrammar.Modern)
+            {
+                // Crumbs left where corridors cut a bed read as scattered lawn
+                // patches, not as design: every bed needs real presence.
+                zones.RemoveAll(zone => zone != lead && !OwnGarden(zone)
+                    && PlazaShape.Area(zone.Polygon) < math.max(MinimumBedArea, leadArea * 0.2f));
+                return;
+            }
+
             var axis = design.Rooms[0].Axis;
             var companions = new List<PlazaGreenZone>();
             foreach (var zone in zones)

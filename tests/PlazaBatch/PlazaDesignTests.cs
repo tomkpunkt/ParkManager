@@ -61,6 +61,15 @@ internal static class PlazaDesignTests
             ("an der Engstelle", new[] { new float2(60, 14), new float2(0, 20) }),
             ("Enden", new[] { new float2(0, 20), new float2(120, 20) }));
         Add("Klein", Rect(0, 0, 24, 24), ("1 Eingang", new[] { new float2(12, 0) }));
+        // From a game test (2026-10-13): a plot cut by a roundabout's arc,
+        // six entrances; measured from the screenshot at about 5 px/m.
+        var roundabout = new List<float2> { new(104.4f, 150f), new(156.6f, 149.4f),
+            new(158.4f, 1.4f), new(27.8f, 3.8f), new(28.2f, 54.6f), new(42.6f, 62.4f),
+            new(55.6f, 70.6f), new(71.4f, 85f), new(82.8f, 98.2f), new(91.8f, 112.6f),
+            new(99.4f, 129.6f) };
+        Add("Spielfall Kreisel", roundabout, ("6 Eingänge", new[] { new float2(128.8f, 149.6f),
+            new float2(157.2f, 108.4f), new float2(158.2f, 36.6f), new float2(91f, 2.8f),
+            new float2(28f, 28f), new float2(77.1f, 91.5f) }));
         Add("Groß", Rect(0, 0, 180, 120),
             ("2 Eingänge", new[] { new float2(90, 0), new float2(180, 60) }));
         return cases;

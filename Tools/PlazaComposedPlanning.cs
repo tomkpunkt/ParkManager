@@ -46,6 +46,8 @@ namespace ParkManager.Tools
             {
                 _composedDesign = PlazaComposer.Compose(_points, entrances,
                     (PlazaStyle)_plazaDesignStyle, _plazaSeed);
+                // The exact input, so a game case can be replayed in the batch tests.
+                Mod.Log.Info($"ParkManager plaza design input: {DesignInputJson(entrances)}");
                 _composedDesignKey = key;
                 composeTime = _composedDesign.Metrics.Milliseconds;
             }
@@ -156,6 +158,28 @@ namespace ParkManager.Tools
             _expectedParkSurfaceAreas = _composedSurfaces.Paving.Count;
             _expectedPlazaGreenAreas = _composedSurfaces.Green.Count;
             return true;
+        }
+
+        private string DesignInputJson(List<float2> entrances)
+        {
+            var json = new System.Text.StringBuilder("{\"style\":")
+                .Append(_plazaDesignStyle).Append(",\"seed\":").Append(_plazaSeed)
+                .Append(",\"polygon\":[");
+            void Append(List<float2> points)
+            {
+                for (var i = 0; i < points.Count; i++)
+                {
+                    if (i > 0) json.Append(',');
+                    json.Append('[').Append(points[i].x.ToString("F2",
+                            System.Globalization.CultureInfo.InvariantCulture))
+                        .Append(',').Append(points[i].y.ToString("F2",
+                            System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                }
+            }
+            Append(_points);
+            json.Append("],\"entrances\":[");
+            Append(entrances);
+            return json.Append("]}").ToString();
         }
 
         private ulong ComposedDesignKey(List<float2> entrances)

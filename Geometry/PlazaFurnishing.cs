@@ -33,6 +33,11 @@ namespace ParkManager.Geometry
         /// <summary>Low planting that gives a bed or island its function.</summary>
         BedPlanting = 9,
         /// <summary>
+        /// A regular grid of trees on paving that turns a large remainder
+        /// between the rooms and the plot edge into a shaded grove.
+        /// </summary>
+        TreeGrid = 11,
+        /// <summary>
         /// Objects that are given, not designed (already standing or pinned);
         /// placed unchecked and the first to go when they block the way.
         /// </summary>

@@ -41,7 +41,10 @@ namespace ParkManager.Geometry
                     // paving cuts and the game's area nodes few.
                     var green = DropShortEdges(Clean(PlazaComposer.Simplify(
                         Counterclockwise(zone.Polygon), 0.1f)));
-                    green = SnapToPlot(DropSpikes(green), outline);
+                    green = DropSpikes(green);
+                    // Flush to the edge only where nobody walks or arrives.
+                    var flush = SnapToPlot(green, outline);
+                    if (KeepsAccess(flush, design)) green = flush;
                     if (green.Count < 3 || PlazaShape.Area(green) < MinimumGreenArea
                         || !StrictlySimple(green)) continue;
                     plan.Green.Add(green);
@@ -182,6 +185,33 @@ namespace ParkManager.Geometry
             result = DropShortEdges(Clean(result));
             return result.Count >= 3 && StrictlySimple(result)
                 && PolygonMath.SignedArea(result) > 0.0 ? result : green;
+        }
+
+        /// <summary>Free radius kept around an entrance when green is laid to the edge.</summary>
+        private const float EntranceKeep = 5f;
+
+        /// <summary>
+        /// A green area laid flush to the plot edge may not reach into a
+        /// movement corridor nor come close to an entrance.
+        /// </summary>
+        private static bool KeepsAccess(List<float2> green, PlazaDesign design)
+        {
+            if (design == null) return true;
+            foreach (var corridor in design.MovementCorridors)
+            {
+                if (corridor.Points.Count < 2) continue;
+                foreach (var point in PlazaShape.Densify(green, 0.5f))
+                    if (PlazaMovement.DistanceToPolyline(point, corridor.Points)
+                        < corridor.Width * 0.5f) return false;
+                foreach (var point in corridor.Points)
+                    if (PolygonMath.PointInside(point, green)) return false;
+            }
+            if (design.Movement != null)
+                foreach (var entrance in design.Movement.Entrances)
+                    if (PolygonMath.PointInside(entrance, green)
+                        || PlazaComposer.DistanceToOutline(entrance, green) < EntranceKeep)
+                        return false;
+            return true;
         }
 
         /// <summary>Removes corners sharper than <see cref="MinimumCornerAngle"/>.</summary>

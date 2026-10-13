@@ -815,9 +815,13 @@ namespace ParkManager.Tools
                 _plannerMode, _entrances, _hoverEntrance, _pathPreview,
                 _decorationPlan, IsPlaza,
                 _buildIssues, LastSnap, HasSnapGuide, SnapGuide);
-            if (IsPlaza && _composedSurfaces != null && !HasBuiltPaths)
-                ParkOverlay.DrawPlazaGreen(buffer, _composedSurfaces.Green,
-                    _worldPoints.Count > 0 ? _worldPoints[0].y + 0.1f : 0.1f);
+            if (IsPlaza && _composedSurfaces != null)
+            {
+                var height = _worldPoints.Count > 0 ? _worldPoints[0].y + 0.1f : 0.1f;
+                if (!HasBuiltPaths) ParkOverlay.DrawPlazaGreen(buffer, _composedSurfaces.Green, height);
+                // Seams stay visible after the build, over the real surfaces.
+                ParkOverlay.DrawPlazaSeams(buffer, _composedSurfaces.Paving, height);
+            }
             if (_removeMode)
                 ParkOverlay.DrawParkHighlight(buffer, _removeHighlightLines,
                     _removeHighlightPoints,

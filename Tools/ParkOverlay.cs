@@ -173,6 +173,25 @@ namespace ParkManager.Tools
         private static readonly Color PlazaGreen = new Color(0.30f, 0.72f, 0.28f, 0.55f);
         private static readonly Color PlazaGreenEdge = new Color(0.18f, 0.55f, 0.16f, 1f);
 
+        private static readonly Color PlazaSeam = new Color(1f, 1f, 1f, 0.7f);
+
+        /// <summary>
+        /// Outlines of the paving pieces, dashed: shows where the game gets
+        /// separate surfaces, to tell a split problem from a render problem.
+        /// </summary>
+        internal static void DrawPlazaSeams(OverlayRenderSystem.Buffer buffer,
+            IReadOnlyList<List<float2>> paving, float height)
+        {
+            if (paving == null || paving.Count < 2) return;
+            foreach (var piece in paving)
+                for (int i = 0, j = piece.Count - 1; i < piece.Count; j = i++)
+                    buffer.DrawDashedLine(PlazaSeam, PlazaSeam, 0f,
+                        OverlayRenderSystem.StyleFlags.Projected,
+                        new Line3.Segment(new float3(piece[j].x, height, piece[j].y),
+                            new float3(piece[i].x, height, piece[i].y)),
+                        0.25f, 1.2f, 0.8f);
+        }
+
         /// <summary>The designed green of a composed plaza, as it will be built.</summary>
         internal static void DrawPlazaGreen(OverlayRenderSystem.Buffer buffer,
             IReadOnlyList<List<float2>> green, float height)
